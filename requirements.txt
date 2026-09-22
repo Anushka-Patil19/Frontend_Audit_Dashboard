@@ -1,0 +1,15 @@
+# Core Web Framework
+fastapi==0.110.0
+
+# HTTP Client
+requests==2.31.0
+
+# Data Processing
+pandas==2.1.0
+numpy==2.1.0
+
+# Validation
+pydantic==2.5.0
+
+# Web Framework (alt)
+flask==3.0.0

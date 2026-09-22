@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "atlassian:login": "tsx src/mcp/atlassian-login.ts"
+    "atlassian:login": "tsx src/mcp/atlassian-login.ts",
+    "check-deps": "tsx src/scripts/check-dependencies.ts"
   },
   "overrides": {
     "rolldown": "1.2.1"
