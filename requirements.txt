@@ -18,7 +18,8 @@ pydantic==2.5.0
 flask==3.0.0
 
 # Deprecated — PyPI listing says "use scikit-learn instead"
-sklearn==0.0.post12
+# sklearn==0.0.post12
+scikit-learn==1.7.2
 
 # Deprecated — PyPI listing says "See the 'parameterized' package"
 nose-parameterized==0.6.0
