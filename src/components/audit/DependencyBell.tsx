@@ -5,12 +5,11 @@ import { checkRepoDependencies } from "@/lib/dependency-monitor";
 import type { DependencyResult } from "@/lib/version-checker";
 
 // Polls the GitHub Dependency Version Monitoring POC (src/lib/dependency-monitor.ts)
-// and surfaces packages that need attention — an update available and/or
-// flagged deprecated — as a red notification bell, matching the
-// compliance-alert visual language used elsewhere (bg-fail/text-fail).
-// Packages that are both up to date AND not deprecated are left out;
-// deprecation stays reported even if the same (deprecated) package has
-// since shipped a newer release.
+// and surfaces only packages that actually need a version update, as a red
+// notification bell, matching the compliance-alert visual language used
+// elsewhere (bg-fail/text-fail). A package that's already on its latest
+// release is left out even if it's separately flagged deprecated — nothing
+// to action there, so nothing to alert on.
 export function DependencyBell() {
   const checkDependencies = useServerFn(checkRepoDependencies);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
@@ -44,7 +43,7 @@ export function DependencyBell() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  const flaggedResults = results.filter((r) => r.deprecated || r.status !== "UP_TO_DATE");
+  const flaggedResults = results.filter((r) => r.status === "UPDATE_AVAILABLE");
   const alertCount = flaggedResults.length;
   const hasAlerts = alertCount > 0 || state === "error";
 
@@ -93,20 +92,9 @@ export function DependencyBell() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-foreground">{r.package}</span>
                   <span className="font-mono text-faint">
-                    {r.currentVersion}
-                    {r.status === "UPDATE_AVAILABLE" ? ` → ${r.latestVersion}` : ""}
+                    {r.currentVersion} → {r.latestVersion}
                   </span>
-                  <span
-                    className={
-                      r.status === "UPDATE_AVAILABLE"
-                        ? "text-fail"
-                        : r.status === "CHECK_FAILED"
-                          ? "text-warn"
-                          : "text-ok"
-                    }
-                  >
-                    {r.status === "UPDATE_AVAILABLE" ? "update" : r.status === "CHECK_FAILED" ? "failed" : "up to date"}
-                  </span>
+                  <span className="text-fail">update</span>
                 </div>
                 {r.deprecated && (
                   <p className="mt-1 rounded bg-fail/10 px-1.5 py-1 text-[11px] text-fail" title={r.deprecationNote ?? undefined}>
