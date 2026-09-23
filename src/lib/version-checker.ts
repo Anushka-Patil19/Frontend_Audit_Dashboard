@@ -33,6 +33,7 @@ export function parseRequirementsTxt(content: string): { package: string; versio
 // Compares dotted numeric version strings (major.minor.patch, any length).
 // Returns negative if a < b, 0 if equal, positive if a > b.
 export function compareVersions(a: string, b: string): number {
+  if (a === b) return 0;
   const partsA = a.split(".").map(Number);
   const partsB = b.split(".").map(Number);
   const length = Math.max(partsA.length, partsB.length);
