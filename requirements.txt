@@ -6,7 +6,10 @@ requests==2.34.2
 
 # Data Processing
 pandas==3.0.6
-numpy==1.26.4
+
+# Deprecated — numpy's own historical predecessor, officially marked
+# "Development Status :: 7 - Inactive" on PyPI
+Numeric==24.2
 
 # Validation
 pydantic==2.5.0
