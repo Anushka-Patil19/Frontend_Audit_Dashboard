@@ -5,8 +5,12 @@ import { checkRepoDependencies } from "@/lib/dependency-monitor";
 import type { DependencyResult } from "@/lib/version-checker";
 
 // Polls the GitHub Dependency Version Monitoring POC (src/lib/dependency-monitor.ts)
-// and surfaces outdated/failed packages as a red notification bell, matching
-// the compliance-alert visual language used elsewhere (bg-fail/text-fail).
+// and surfaces only currently-deprecated packages as a red notification bell,
+// matching the compliance-alert visual language used elsewhere
+// (bg-fail/text-fail). Up-to-date and update-available packages are
+// deliberately not shown here — deprecation is the one thing worth
+// interrupting someone for, and it persists regardless of whether a newer
+// release of the same (deprecated) package exists.
 export function DependencyBell() {
   const checkDependencies = useServerFn(checkRepoDependencies);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
@@ -40,7 +44,8 @@ export function DependencyBell() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  const alertCount = results.filter((r) => r.status !== "UP_TO_DATE" || r.deprecated).length;
+  const deprecatedResults = results.filter((r) => r.deprecated);
+  const alertCount = deprecatedResults.length;
   const hasAlerts = alertCount > 0 || state === "error";
 
   return (
@@ -69,7 +74,7 @@ export function DependencyBell() {
       {open && (
         <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-border bg-panel shadow-panel">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <p className="text-xs font-semibold text-foreground">Dependency versions</p>
+            <p className="text-xs font-semibold text-foreground">Deprecated dependencies in use</p>
             <button onClick={load} className="text-[11px] text-primary hover:underline cursor-pointer">
               Re-check
             </button>
@@ -78,35 +83,20 @@ export function DependencyBell() {
             {state === "error" && (
               <p className="px-2 py-3 text-xs text-fail">{error}</p>
             )}
-            {state !== "error" && results.length === 0 && (
+            {state !== "error" && deprecatedResults.length === 0 && (
               <p className="px-2 py-3 text-xs text-muted-foreground">
-                {state === "loading" ? "Checking requirements.txt against PyPI…" : "No dependencies found."}
+                {state === "loading" ? "Checking requirements.txt for deprecated packages…" : "No deprecated packages currently in use."}
               </p>
             )}
-            {results.map((r) => (
+            {deprecatedResults.map((r) => (
               <div key={r.package} className="rounded-md px-2 py-1.5 text-xs hover:bg-panel-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-foreground">{r.package}</span>
-                  <span className="font-mono text-faint">
-                    {r.currentVersion} → {r.latestVersion ?? "?"}
-                  </span>
-                  <span
-                    className={
-                      r.status === "UP_TO_DATE"
-                        ? "text-ok"
-                        : r.status === "UPDATE_AVAILABLE"
-                          ? "text-fail"
-                          : "text-warn"
-                    }
-                  >
-                    {r.status === "UP_TO_DATE" ? "up to date" : r.status === "UPDATE_AVAILABLE" ? "update" : "failed"}
-                  </span>
+                  <span className="font-mono text-faint">{r.currentVersion}</span>
                 </div>
-                {r.deprecated && (
-                  <p className="mt-1 rounded bg-fail/10 px-1.5 py-1 text-[11px] text-fail" title={r.deprecationNote ?? undefined}>
-                    ⚠ DEPRECATED{r.deprecationNote ? ` — ${r.deprecationNote}` : ""}
-                  </p>
-                )}
+                <p className="mt-1 rounded bg-fail/10 px-1.5 py-1 text-[11px] text-fail" title={r.deprecationNote ?? undefined}>
+                  ⚠ DEPRECATED{r.deprecationNote ? ` — ${r.deprecationNote}` : ""}
+                </p>
               </div>
             ))}
           </div>

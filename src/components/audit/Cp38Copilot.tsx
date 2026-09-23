@@ -18,7 +18,7 @@ type ChatMessage = {
 const SUGGESTIONS = [
   "What's the status of PIT Armour's UAT sign-off?",
   "Check CP10 for PIT Armour.",
-  "Which dependencies need updates or are deprecated?",
+  "Which dependencies are deprecated?",
 ];
 
 export function Cp38Copilot() {
