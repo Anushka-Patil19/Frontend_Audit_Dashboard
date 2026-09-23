@@ -23,23 +23,42 @@ export function looksLikeDependencyQuestion(question: string): boolean {
   );
 }
 
-// Only reports currently-deprecated packages — version drift (update
-// available / up to date) is deliberately left out of every surface
-// (bell, copilot, evidence). A deprecated package stays reported even if
-// it has since shipped a newer release; deprecation doesn't get undone by
-// a version bump of the same abandoned package.
+// Reports packages needing attention — an update available and/or flagged
+// deprecated. Packages that are both up to date and not deprecated are
+// left out of the reply. A deprecated package stays reported even if it
+// has since shipped a newer release of itself.
 export function formatDependencyReply(res: DependencyMonitorResult): string {
   if (!res.ok) return `Couldn't check dependencies: ${res.error}`;
 
-  const deprecated = res.results.filter((r) => r.deprecated);
+  const { results } = res;
+  const updates = results.filter((r) => r.status === "UPDATE_AVAILABLE");
+  const deprecated = results.filter((r) => r.deprecated);
+  const failed = results.filter((r) => r.status === "CHECK_FAILED");
 
-  if (deprecated.length === 0) {
-    return `No deprecated packages currently in use (${res.results.length} dependencies checked).`;
+  if (updates.length === 0 && deprecated.length === 0 && failed.length === 0) {
+    return `All ${results.length} tracked dependencies are up to date and none are deprecated.`;
   }
 
-  const lines: string[] = [`${deprecated.length} deprecated package${deprecated.length === 1 ? "" : "s"} currently in use:`, ""];
-  for (const r of deprecated) {
-    lines.push(`  • ${r.package} (${r.currentVersion}) — ${r.deprecationNote ?? "flagged deprecated"}`);
+  const lines: string[] = [
+    `${results.length} dependencies tracked — ${updates.length} need an update, ${deprecated.length} deprecated${failed.length ? `, ${failed.length} failed` : ""}.`,
+    "",
+  ];
+
+  if (updates.length > 0) {
+    lines.push("Need an update:");
+    for (const r of updates) lines.push(`  • ${r.package}: ${r.currentVersion} → ${r.latestVersion}`);
+    lines.push("");
+  }
+
+  if (deprecated.length > 0) {
+    lines.push("Deprecated:");
+    for (const r of deprecated) lines.push(`  • ${r.package} (${r.currentVersion}) — ${r.deprecationNote ?? "flagged deprecated"}`);
+    lines.push("");
+  }
+
+  if (failed.length > 0) {
+    lines.push("Failed to check:");
+    for (const r of failed) lines.push(`  • ${r.package} — ${r.message}`);
   }
 
   return lines.join("\n").trimEnd();
