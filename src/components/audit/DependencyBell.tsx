@@ -117,14 +117,19 @@ export function DependencyBell() {
                     </span>
                   </button>
                   {r.deprecated && isExpanded && (
-                    <p
-                      className="mt-1 rounded border border-fail/30 bg-fail/10 px-1.5 py-1 text-[11px] font-medium text-fail"
-                      title={r.deprecationNote ?? undefined}
-                    >
-                      You're using {r.package} ({r.currentVersion}), but it's deprecated
-                      {r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.
-                      {r.status === "UPDATE_AVAILABLE" ? ` (an update to ${r.latestVersion} is also available, but it's still the same deprecated package.)` : ""}
-                    </p>
+                    <div className="mt-1 rounded border border-fail/30 bg-fail/10 px-1.5 py-1">
+                      <p className="text-[11px] font-medium text-fail" title={r.deprecationNote ?? undefined}>
+                        You're using {r.package} ({r.currentVersion}), but it's deprecated
+                        {r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.
+                        {r.status === "UPDATE_AVAILABLE" ? ` (an update to ${r.latestVersion} is also available, but it's still the same deprecated package.)` : ""}
+                      </p>
+                      <p className="mt-1 text-[10px] text-fail/70">
+                        Source:{" "}
+                        {r.deprecationSource === "official-classifier"
+                          ? "PyPI official classifier (Development Status :: 7 - Inactive)"
+                          : "maintainer's own package description"}
+                      </p>
+                    </div>
                   )}
                 </div>
               );

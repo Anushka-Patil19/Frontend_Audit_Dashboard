@@ -1,6 +1,6 @@
 // Parses requirements.txt (pkg==version lines only, per PRD scope) and
 // performs semantic version comparison against the latest PyPI release.
-import { fetchLatestPypiVersion } from "./pypi-registry";
+import { fetchLatestPypiVersion, type DeprecationSource } from "./pypi-registry";
 
 export type DependencyStatus = "UP_TO_DATE" | "UPDATE_AVAILABLE" | "CHECK_FAILED";
 
@@ -14,6 +14,10 @@ export type DependencyResult = {
   // the latest release and still be maintainer-flagged as deprecated.
   deprecated: boolean;
   deprecationNote: string | null;
+  // Which real signal actually fired — PyPI's own structured classifier
+  // ("official-classifier") vs. the maintainer's own free-text description
+  // ("maintainer-text"). Never fabricated; null when neither said anything.
+  deprecationSource: DeprecationSource;
   replacementPackage: string | null;
 };
 
@@ -56,6 +60,7 @@ export async function checkDependency(pkg: string, currentVersion: string): Prom
       message: lookup.error,
       deprecated: false,
       deprecationNote: null,
+      deprecationSource: null,
       replacementPackage: null,
     };
   }
@@ -68,6 +73,7 @@ export async function checkDependency(pkg: string, currentVersion: string): Prom
     status,
     deprecated: lookup.deprecated,
     deprecationNote: lookup.deprecationNote,
+    deprecationSource: lookup.deprecationSource,
     replacementPackage: lookup.replacementPackage,
   };
 }

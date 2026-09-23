@@ -53,8 +53,12 @@ export function formatDependencyReply(res: DependencyMonitorResult): string {
   if (deprecated.length > 0) {
     lines.push("Deprecated (currently in use):");
     for (const r of deprecated) {
+      const sourceLabel =
+        r.deprecationSource === "official-classifier"
+          ? "PyPI official classifier"
+          : "maintainer's own package description";
       lines.push(
-        `  • You're using ${r.package} (${r.currentVersion}), but it's deprecated${r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.`,
+        `  • You're using ${r.package} (${r.currentVersion}), but it's deprecated${r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}. [source: ${sourceLabel}]`,
       );
     }
   }
