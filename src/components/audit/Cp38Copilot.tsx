@@ -1,28 +1,43 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Bot, Send, CheckCircle2, Clock, X } from "lucide-react";
+import { Bot, Send, CheckCircle2, Clock, X, XCircle } from "lucide-react";
 import { runCp38Verification, type Cp38Result } from "@/lib/cp38-verify";
 import { runCp10Verification, type Cp10Result } from "@/lib/cp10-verify";
 import { looksLikeCp10Question } from "@/lib/cp10-config";
+import { runCrComplianceVerification, type CrComplianceResult, type CrOutcomeId } from "@/lib/cr-compliance-verify";
+import { looksLikeCrComplianceQuestion } from "@/lib/cr-compliance-config";
 import { useAudit } from "@/lib/audit-store";
+import type { AutoStatus } from "@/lib/audit-data";
 import { EvidenceScreenshot, Mono } from "./atoms";
+
+// AutoStatus only has three buckets, so In Progress and Pending both land
+// on "needs-review" — the chat bubble still shows the full four-way outcome.
+const CR_OUTCOME_TO_STATUS: Record<CrOutcomeId, AutoStatus> = {
+  "CR-C": "compliant",
+  "CR-NC": "non-compliant",
+  "CR-IP": "needs-review",
+  "CR-Pending": "needs-review",
+};
 
 type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   cp38Result?: Cp38Result | null;
   cp10Result?: Cp10Result | null;
+  crResult?: CrComplianceResult | null;
 };
 
 const SUGGESTIONS = [
   "What's the status of PIT Armour's UAT sign-off?",
   "Check CP10 for PIT Armour.",
+  "Can you tell me if ticket CR-POC-4 is compliant?",
 ];
 
 export function Cp38Copilot() {
   const runCp38 = useServerFn(runCp38Verification);
   const runCp10 = useServerFn(runCp10Verification);
-  const { checkpoints, completeStep, resolveCheckpoint, setCp10Verification } = useAudit();
+  const runCr = useServerFn(runCrComplianceVerification);
+  const { checkpoints, completeStep, resolveCheckpoint, setCp10Verification, setCrVerification } = useAudit();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -65,13 +80,38 @@ export function Cp38Copilot() {
     }
   };
 
+  const askCr = async (question: string) => {
+    const { reply, result, gates, config } = await runCr({ data: { question } });
+    // Shared with the cp-18 ledger card (AutomatedCard renders
+    // CrComplianceProgress from this same state), same pattern as CP10.
+    setMessages((m) => [...m, { role: "assistant", text: reply, crResult: result }]);
+    setCrVerification(result, gates);
+
+    // Reflects into the checkpoint ledger regardless of outcome (not just
+    // Compliant) — a Non-Compliant result (merged without approval, or by
+    // the wrong person) is exactly the kind of thing this control exists to
+    // surface, so it belongs on the ledger too, not just Compliant ones.
+    if (result && config?.ledgerId) {
+      const status = CR_OUTCOME_TO_STATUS[result.outcome_id];
+      resolveCheckpoint(
+        config.ledgerId,
+        status,
+        "Verified",
+        `${result.jira_ticket}: ${reply.split("\n").slice(1).join(" ")}`,
+        "CR Compliance Copilot (AI-verified)",
+      );
+    }
+  };
+
   const ask = async (question: string) => {
     if (!question.trim() || busy) return;
     setMessages((m) => [...m, { role: "user", text: question }]);
     setInput("");
     setBusy(true);
     try {
-      if (looksLikeCp10Question(question)) {
+      if (looksLikeCrComplianceQuestion(question)) {
+        await askCr(question);
+      } else if (looksLikeCp10Question(question)) {
         await askCp10(question);
       } else {
         await askCp38(question);
@@ -105,9 +145,10 @@ export function Cp38Copilot() {
           </div>
 
           <p className="border-b border-border px-5 py-2.5 text-xs text-muted-foreground">
-            CP38 (UAT sign-off) and CP10 (CAB approval) both work the same way: identity/eligibility checks
-            are always deterministic — the LLM only classifies language, and only once every check ahead of
-            it has already passed.
+            CP38 (UAT sign-off) and CP10 (CAB approval) work the same way: identity/eligibility checks are
+            always deterministic — the LLM only classifies language, and only once every check ahead of it
+            has already passed. CR compliance is fully deterministic: Jira approval, then a matching GitHub
+            branch, then a merged PR.
           </p>
 
           <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -196,6 +237,58 @@ export function Cp38Copilot() {
                           fileName={m.cp10Result.evidence_screenshot}
                           source="cp10"
                         />
+                      )}
+                    </div>
+                  )}
+
+                  {m.crResult && (
+                    <div className="mt-3 border-t border-border pt-2.5 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {m.crResult.outcome_id === "CR-C" && (
+                          <span className="inline-flex items-center gap-1 text-ok">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> CR-Compliant
+                          </span>
+                        )}
+                        {m.crResult.outcome_id === "CR-NC" && (
+                          <span className="inline-flex items-center gap-1 text-fail">
+                            <XCircle className="h-3.5 w-3.5" /> CR-Non-Compliant
+                          </span>
+                        )}
+                        {m.crResult.outcome_id === "CR-IP" && (
+                          <span className="inline-flex items-center gap-1 text-warn">
+                            <Clock className="h-3.5 w-3.5" /> CR-In Progress
+                          </span>
+                        )}
+                        {m.crResult.outcome_id === "CR-Pending" && (
+                          <span className="inline-flex items-center gap-1 text-warn">
+                            <Clock className="h-3.5 w-3.5" /> CR-Pending
+                          </span>
+                        )}
+                        {m.crResult.jira_status && (
+                          <Mono className="text-faint">jira {m.crResult.jira_status}</Mono>
+                        )}
+                        {m.crResult.pr_number != null && (
+                          <Mono className="text-faint">
+                            PR #{m.crResult.pr_number} ·{" "}
+                            {m.crResult.pr_merged ? `merged by ${m.crResult.pr_merged_by ?? "unknown"}` : m.crResult.pr_state}
+                          </Mono>
+                        )}
+                        {m.crResult.required_merger && (
+                          <Mono className={m.crResult.merger_matches ? "text-ok" : "text-fail"}>
+                            requires @{m.crResult.required_merger}
+                            {m.crResult.pr_merged ? (m.crResult.merger_matches ? " ✓" : " ✗") : ""}
+                          </Mono>
+                        )}
+                      </div>
+                      {m.crResult.pr_url && (
+                        <a
+                          href={m.crResult.pr_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1.5 inline-block text-primary hover:underline"
+                        >
+                          View pull request
+                        </a>
                       )}
                     </div>
                   )}

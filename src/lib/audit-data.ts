@@ -679,13 +679,13 @@ const rawInitialCheckpoints: Checkpoint[] = [
     category: "Source Code",
     ownerRole: "Developer",
     auditEvidence: "Commit History",
-    sources: ["github"],
-    sourceLabel: "GitHub",
-    status: "compliant",
-    confidence: 100,
-    syncedMinutesAgo: 19,
+    sources: ["jira", "github"],
+    sourceLabel: "Jira + GitHub",
+    status: "needs-review",
+    confidence: 0,
+    syncedMinutesAgo: 0,
     stale: false,
-    detail: "Verified against " + "Commit History" + " owned by " + "Developer" + ".",
+    detail: "Cross-checks a CR ticket's approval status in Jira against its merged pull request and merger identity in GitHub — driven by the CR Compliance copilot, not a static log check.",
     entity: "REF-18 · " + "Commit History",
     evidenceFile: "evidence_18_" + "commit-history" + ".json",
     evidence: JSON.stringify({
@@ -694,13 +694,13 @@ const rawInitialCheckpoints: Checkpoint[] = [
       requirement: "Git commits are traceable to approved CRs",
       ownerRole: "Developer",
       auditEvidence: "Commit History",
-      source: "Github",
-      verificationState: "compliant",
+      source: "JIRA+GITHUB",
+      verificationState: "pending",
       timestamp: "2026-09-09T08:00:00Z"
     }, null, 2),
-    approver: { name: "Audit Bot", role: "Developer", valid: true, note: "Verified against system logs" },
+    approver: { name: "CR Compliance Copilot", role: "Developer", valid: false, note: "Awaiting copilot verification" },
     history: [
-      { at: "Today 08:30", text: "Automated check verified against " + "Commit History" }
+      { at: "Today 08:30", text: 'Awaiting a CR compliance check via the copilot — ask e.g. "Can you tell me if ticket CR-POC-4 is compliant?"' }
     ]
   },
   {
