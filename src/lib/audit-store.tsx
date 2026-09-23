@@ -12,6 +12,7 @@ import {
 } from "./audit-data";
 import { syncMailConnector } from "./mail-connector";
 import type { Cp10GateStatus, Cp10Result } from "./cp10-verify";
+import type { CrGateStatus, CrComplianceResult } from "./cr-compliance-verify";
 
 const CP10_GATE_ORDER: (keyof Cp10GateStatus)[] = ["llm", "mail", "jira"];
 
@@ -34,6 +35,12 @@ type AuditContextValue = {
   cp10Result: Cp10Result | null;
   setCp10Verification: (result: Cp10Result | null, gates: Cp10GateStatus) => void;
   undoCp10Gate: (ledgerId: string, actor?: string) => void;
+  // Live CR-compliance result — shared between the copilot widget and the
+  // cp-18 ledger card, same pattern as CP10 above.
+  crGates: CrGateStatus;
+  crResult: CrComplianceResult | null;
+  setCrVerification: (result: CrComplianceResult | null, gates: CrGateStatus) => void;
+  undoCrVerification: (ledgerId: string, actor?: string) => void;
 };
 
 const AuditContext = createContext<AuditContextValue | null>(null);
@@ -46,6 +53,8 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [secondsToSync, setSecondsToSync] = useState(14 * 60 + 12);
   const [cp10Gates, setCp10Gates] = useState<Cp10GateStatus>({ jira: "pending", mail: "pending", llm: "pending" });
   const [cp10Result, setCp10Result] = useState<Cp10Result | null>(null);
+  const [crGates, setCrGates] = useState<CrGateStatus>({ jira: "pending", branch: "pending", pr: "pending" });
+  const [crResult, setCrResult] = useState<CrComplianceResult | null>(null);
   const syncMail = useServerFn(syncMailConnector);
 
   useEffect(() => {
@@ -282,9 +291,23 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         }
         setCp10Gates((gates) => ({ ...gates, [lastResolvedKey]: "pending" }));
       },
+      crGates,
+      crResult,
+      setCrVerification: (result, gates) => {
+        setCrResult(result);
+        setCrGates(gates);
+      },
+      // Unlike CP10's per-gate undo (Jira/GitHub run in parallel here, not a
+      // blocking sequence), this clears the whole result at once and resets
+      // the ledger status back to needs-review.
+      undoCrVerification: (ledgerId, actor = "CR Compliance Copilot (undo)") => {
+        undoResolveCheckpoint(ledgerId, actor);
+        setCrResult(null);
+        setCrGates({ jira: "pending", branch: "pending", pr: "pending" });
+      },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [checkpoints, connectors, feed, clock, dateLabel, countdown, cp10Gates, cp10Result],
+    [checkpoints, connectors, feed, clock, dateLabel, countdown, cp10Gates, cp10Result, crGates, crResult],
   );
 
   return <AuditContext.Provider value={value}>{children}</AuditContext.Provider>;

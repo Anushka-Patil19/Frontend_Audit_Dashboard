@@ -5,6 +5,7 @@ import { statusTone } from "@/lib/audit-data";
 import { useAudit } from "@/lib/audit-store";
 import { EvidenceScreenshot, HistoryStrip, Mono, SourceBadge, StatusPill, tone } from "./atoms";
 import { Cp10VerticalProgress } from "./Cp10VerticalProgress";
+import { CrComplianceProgress } from "./CrComplianceProgress";
 
 type Props = {
   cp: AutomatedCheckpoint;
@@ -22,9 +23,10 @@ export function AutomatedCard({ cp, onResolve }: Props) {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [action, setAction] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  const { cp10Gates, cp10Result, undoCp10Gate } = useAudit();
+  const { cp10Gates, cp10Result, undoCp10Gate, crGates, crResult, undoCrVerification } = useAudit();
   const t = tone[statusTone[cp.status]];
   const isCp10 = cp.id === "cp-10";
+  const isCr = cp.id === "cp-18";
 
   return (
     <div className={`border-l-2 ${t.border} bg-panel`}>
@@ -141,6 +143,10 @@ export function AutomatedCard({ cp, onResolve }: Props) {
 
           {isCp10 && (
             <Cp10VerticalProgress gates={cp10Gates} result={cp10Result} onUndo={() => undoCp10Gate(cp.id)} />
+          )}
+
+          {isCr && (
+            <CrComplianceProgress gates={crGates} result={crResult} onUndo={() => undoCrVerification(cp.id)} />
           )}
 
           <div className="border border-border bg-panel-2 px-3 py-2.5">
