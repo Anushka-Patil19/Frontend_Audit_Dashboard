@@ -23,24 +23,40 @@ export function looksLikeDependencyQuestion(question: string): boolean {
   );
 }
 
-// Only reports packages that actually need a version update. A package
-// that's already on its latest release is left out even if it's
-// separately flagged deprecated — nothing to action there, so nothing to
-// report. The deprecation note still rides along on any package that
-// does need an update and happens to also be deprecated.
+// Reports packages needing action — either a version update, or a switch
+// away from a deprecated package (regardless of whether that deprecated
+// package happens to also be on its latest release — deprecation isn't
+// undone by a version bump of the same abandoned package). Packages that
+// are both up to date and not deprecated are left out entirely.
 export function formatDependencyReply(res: DependencyMonitorResult): string {
   if (!res.ok) return `Couldn't check dependencies: ${res.error}`;
 
   const { results } = res;
-  const updates = results.filter((r) => r.status === "UPDATE_AVAILABLE");
+  const updates = results.filter((r) => r.status === "UPDATE_AVAILABLE" && !r.deprecated);
+  const deprecated = results.filter((r) => r.deprecated);
 
-  if (updates.length === 0) {
-    return `All ${results.length} tracked dependencies are up to date — nothing needs an update.`;
+  if (updates.length === 0 && deprecated.length === 0) {
+    return `All ${results.length} tracked dependencies are up to date and none are deprecated.`;
   }
 
-  const lines: string[] = [`${updates.length} of ${results.length} dependencies need an update:`, ""];
-  for (const r of updates) {
-    lines.push(`  • ${r.package}: ${r.currentVersion} → ${r.latestVersion}${r.deprecated ? ` — ⚠ DEPRECATED: ${r.deprecationNote ?? "flagged deprecated"}` : ""}`);
+  const lines: string[] = [
+    `${updates.length + deprecated.length} of ${results.length} dependencies need action — ${updates.length} need an update, ${deprecated.length} deprecated.`,
+    "",
+  ];
+
+  if (updates.length > 0) {
+    lines.push("Need an update:");
+    for (const r of updates) lines.push(`  • ${r.package}: ${r.currentVersion} → ${r.latestVersion}`);
+    lines.push("");
+  }
+
+  if (deprecated.length > 0) {
+    lines.push("Deprecated (currently in use):");
+    for (const r of deprecated) {
+      lines.push(
+        `  • You're using ${r.package} (${r.currentVersion}), but it's deprecated${r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.`,
+      );
+    }
   }
 
   return lines.join("\n").trimEnd();

@@ -14,6 +14,7 @@ export type DependencyResult = {
   // the latest release and still be maintainer-flagged as deprecated.
   deprecated: boolean;
   deprecationNote: string | null;
+  replacementPackage: string | null;
 };
 
 // Extracts package==version pairs, skipping comments (# ...) and blank lines.
@@ -55,6 +56,7 @@ export async function checkDependency(pkg: string, currentVersion: string): Prom
       message: lookup.error,
       deprecated: false,
       deprecationNote: null,
+      replacementPackage: null,
     };
   }
   const status: DependencyStatus =
@@ -66,6 +68,7 @@ export async function checkDependency(pkg: string, currentVersion: string): Prom
     status,
     deprecated: lookup.deprecated,
     deprecationNote: lookup.deprecationNote,
+    replacementPackage: lookup.replacementPackage,
   };
 }
 
