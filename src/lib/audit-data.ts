@@ -82,6 +82,8 @@ export type AutomatedCheckpoint = {
   entity: string;
   evidenceFile: string;
   evidence: string;
+  // Screenshot evidence in place of the JSON blob — served from /public.
+  evidenceImage?: string;
   approver?: { name: string; role: string; valid: boolean; note: string };
   history: HistoryEntry[];
 };
@@ -623,17 +625,9 @@ const rawInitialCheckpoints: Checkpoint[] = [
     stale: false,
     detail: "Verified against " + "Repository" + " owned by " + "Developer" + ".",
     entity: "REF-16 · " + "Repository",
-    evidenceFile: "evidence_16_" + "repository" + ".json",
-    evidence: JSON.stringify({
-      itemNumber: 16,
-      category: "Source Code",
-      requirement: "Version control system (Git/Azure DevOps) is used",
-      ownerRole: "Developer",
-      auditEvidence: "Repository",
-      source: "Github",
-      verificationState: "compliant",
-      timestamp: "2026-09-09T08:00:00Z"
-    }, null, 2),
+    evidenceFile: "evidence_16_dependency-notification.png",
+    evidence: "",
+    evidenceImage: "/checkpoint-evidence/cp-16-dependency-notification.png",
     approver: { name: "Audit Bot", role: "Developer", valid: true, note: "Verified against system logs" },
     history: [
       { at: "Today 08:30", text: "Automated check verified against " + "Repository" }

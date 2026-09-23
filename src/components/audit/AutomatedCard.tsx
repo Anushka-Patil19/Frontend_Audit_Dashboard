@@ -113,6 +113,19 @@ export function AutomatedCard({ cp, onResolve }: Props) {
                     <EvidenceScreenshot fileName={cp10Result.evidence_screenshot} source="cp10" />
                   </div>
                 </>
+              ) : cp.evidenceImage ? (
+                <>
+                  <div className="border-b border-border px-3 py-1.5">
+                    <Mono className="text-faint">{cp.evidenceFile}</Mono>
+                  </div>
+                  <div className="px-3 py-3">
+                    <img
+                      src={cp.evidenceImage}
+                      alt="Dependency version monitoring notification"
+                      className="max-h-96 w-full rounded border border-border object-contain object-left-top"
+                    />
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="border-b border-border px-3 py-1.5">
