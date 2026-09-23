@@ -76,10 +76,10 @@
   --fail: oklch(0.5433 0.174 29.7);
   --warn: oklch(0.6264 0.1248 70.45);
   --manual: oklch(0.5106 0.2301 276.97);
-  --sidebar: oklch(0.2629 0.0724 257.53);
-  --sidebar-foreground: oklch(0.9787 0.0057 264.53);
-  --sidebar-muted: oklch(0.7028 0.0323 260.69);
-  --sidebar-active: oklch(0.4882 0.2172 264.38);
+  --sidebar: oklch(0.2629 0.0724 165);
+  --sidebar-foreground: oklch(0.9787 0.0057 165);
+  --sidebar-muted: oklch(0.7028 0.0323 165);
+  --sidebar-active: oklch(0.4882 0.2172 165);
 }
 
 @layer base {

@@ -28,7 +28,8 @@ async function main() {
   for (const r of results) {
     const icon = r.status === "UP_TO_DATE" ? "✅" : r.status === "UPDATE_AVAILABLE" ? "⚠️" : "❌";
     const latest = r.latestVersion ?? "?";
-    console.log(`${icon} ${r.package.padEnd(15)} current=${r.currentVersion.padEnd(10)} latest=${latest.padEnd(10)} ${r.status}${r.message ? ` (${r.message})` : ""}`);
+    const deprecatedTag = r.deprecated ? " ⚠️ DEPRECATED" : "";
+    console.log(`${icon} ${r.package.padEnd(20)} current=${r.currentVersion.padEnd(12)} latest=${latest.padEnd(12)} ${r.status}${r.message ? ` (${r.message})` : ""}${deprecatedTag}`);
   }
 }
 

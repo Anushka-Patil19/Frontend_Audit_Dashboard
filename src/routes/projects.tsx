@@ -27,6 +27,7 @@ import { AutomatedCard } from "@/components/audit/AutomatedCard";
 import { ManualCard } from "@/components/audit/ManualCard";
 import { ModuleGrid } from "@/components/audit/ModuleGrid";
 import { AuditReportModal } from "@/components/audit/AuditReportModal";
+import { DependencyBell } from "@/components/audit/DependencyBell";
 import { Rollup } from "@/components/audit/panels";
 import { Mono, SectionHeading } from "@/components/audit/atoms";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -487,22 +488,25 @@ function ProjectsPage() {
           <span className="text-muted-foreground">Controls</span>
         </div>
 
-        {/* Download Audit Report Button */}
-        <button
-          onClick={() => {
-            setReportTargetProject(selectedProjectMeta);
-            setIsReportOpen(true);
-          }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-all cursor-pointer"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          <span>Download Audit Report</span>
-        </button>
+        {/* Dependency version alerts (GitHub Dependency Version Monitoring POC) */}
+        <DependencyBell />
       </div>
 
       <PageHeader
         title={`${selectedProjectMeta.name} — Controls`}
         subtitle={`Live view across automated and manual verification — ${selectedProjectMeta.client}`}
+        titleAction={
+          <button
+            onClick={() => {
+              setReportTargetProject(selectedProjectMeta);
+              setIsReportOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-all cursor-pointer"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span>Download Audit Report</span>
+          </button>
+        }
       />
 
       <Rollup

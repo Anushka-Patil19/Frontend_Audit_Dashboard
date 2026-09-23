@@ -4,17 +4,22 @@ import { Mono } from "@/components/audit/atoms";
 export function PageHeader({
   title,
   subtitle,
+  titleAction,
   children,
 }: {
   title: string;
   subtitle: string;
+  titleAction?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const { clock, dateLabel } = useAudit();
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
       <div className="min-w-0">
-        <h1 className="font-serif text-2xl tracking-tight text-foreground lg:text-3xl">{title}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-serif text-2xl tracking-tight text-foreground lg:text-3xl">{title}</h1>
+          {titleAction}
+        </div>
         <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
