@@ -2,7 +2,7 @@
 fastapi==0.141.1
 
 # HTTP Client
-requests==2.31.0
+requests==2.34.2
 
 # Data Processing
 pandas==2.1.0
