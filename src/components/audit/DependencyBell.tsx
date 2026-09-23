@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Bell, Loader2 } from "lucide-react";
+import { Bell, ChevronDown, Loader2 } from "lucide-react";
 import { checkRepoDependencies } from "@/lib/dependency-monitor";
 import type { DependencyResult } from "@/lib/version-checker";
 
@@ -16,6 +16,7 @@ export function DependencyBell() {
   const [results, setResults] = useState<DependencyResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
@@ -87,33 +88,47 @@ export function DependencyBell() {
                 {state === "loading" ? "Checking requirements.txt against PyPI…" : "Everything is up to date."}
               </p>
             )}
-            {flaggedResults.map((r) => (
-              <div key={r.package} className="rounded-md px-2 py-1.5 text-xs hover:bg-panel-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-foreground">{r.package}</span>
-                  {r.deprecated ? (
-                    <span className="font-mono text-faint">→ {r.replacementPackage ?? "see notice"}</span>
-                  ) : (
-                    <span className="font-mono text-faint">
-                      {r.currentVersion} → {r.latestVersion}
-                    </span>
-                  )}
-                  <span className={r.deprecated ? "font-medium text-fail" : "font-medium text-warn"}>
-                    {r.deprecated ? "deprecated" : "update"}
-                  </span>
-                </div>
-                {r.deprecated && (
-                  <p
-                    className="mt-1 rounded border border-fail/30 bg-fail/10 px-1.5 py-1 text-[11px] font-medium text-fail"
-                    title={r.deprecationNote ?? undefined}
+            {flaggedResults.map((r) => {
+              const isExpanded = !!expanded[r.package];
+              return (
+                <div key={r.package} className="rounded-md px-2 py-1.5 text-xs hover:bg-panel-2">
+                  <button
+                    type="button"
+                    onClick={() => r.deprecated && setExpanded((e) => ({ ...e, [r.package]: !e[r.package] }))}
+                    className={`flex w-full items-center justify-between gap-2 text-left ${r.deprecated ? "cursor-pointer" : ""}`}
                   >
-                    You're using {r.package} ({r.currentVersion}), but it's deprecated
-                    {r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.
-                    {r.status === "UPDATE_AVAILABLE" ? ` (an update to ${r.latestVersion} is also available, but it's still the same deprecated package.)` : ""}
-                  </p>
-                )}
-              </div>
-            ))}
+                    <span className="flex items-center gap-1">
+                      {r.deprecated && (
+                        <ChevronDown
+                          className={`h-3 w-3 shrink-0 text-faint transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                        />
+                      )}
+                      <span className="font-mono text-foreground">{r.package}</span>
+                    </span>
+                    {r.deprecated ? (
+                      <span className="font-mono text-faint">→ {r.replacementPackage ?? "see notice"}</span>
+                    ) : (
+                      <span className="font-mono text-faint">
+                        {r.currentVersion} → {r.latestVersion}
+                      </span>
+                    )}
+                    <span className={r.deprecated ? "font-medium text-fail" : "font-medium text-warn"}>
+                      {r.deprecated ? "deprecated" : "update"}
+                    </span>
+                  </button>
+                  {r.deprecated && isExpanded && (
+                    <p
+                      className="mt-1 rounded border border-fail/30 bg-fail/10 px-1.5 py-1 text-[11px] font-medium text-fail"
+                      title={r.deprecationNote ?? undefined}
+                    >
+                      You're using {r.package} ({r.currentVersion}), but it's deprecated
+                      {r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.
+                      {r.status === "UPDATE_AVAILABLE" ? ` (an update to ${r.latestVersion} is also available, but it's still the same deprecated package.)` : ""}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
