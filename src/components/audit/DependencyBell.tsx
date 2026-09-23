@@ -98,10 +98,15 @@ export function DependencyBell() {
                       {r.currentVersion} → {r.latestVersion}
                     </span>
                   )}
-                  <span className="text-fail">{r.deprecated ? "deprecated" : "update"}</span>
+                  <span className={r.deprecated ? "font-medium text-fail" : "font-medium text-warn"}>
+                    {r.deprecated ? "deprecated" : "update"}
+                  </span>
                 </div>
                 {r.deprecated && (
-                  <p className="mt-1 rounded bg-fail/10 px-1.5 py-1 text-[11px] text-fail" title={r.deprecationNote ?? undefined}>
+                  <p
+                    className="mt-1 rounded border border-fail/30 bg-fail/10 px-1.5 py-1 text-[11px] font-medium text-fail"
+                    title={r.deprecationNote ?? undefined}
+                  >
                     You're using {r.package} ({r.currentVersion}), but it's deprecated
                     {r.replacementPackage ? ` — use ${r.replacementPackage} instead` : ""}.
                     {r.status === "UPDATE_AVAILABLE" ? ` (an update to ${r.latestVersion} is also available, but it's still the same deprecated package.)` : ""}
