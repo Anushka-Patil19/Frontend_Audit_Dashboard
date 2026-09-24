@@ -34,6 +34,7 @@ import { runCp10Verification, type Cp10Result } from "@/lib/cp10-verify";
 import { looksLikeCp10Question } from "@/lib/cp10-config";
 import { runCrComplianceVerification, type CrComplianceResult, type CrOutcomeId } from "@/lib/cr-compliance-verify";
 import { looksLikeCrComplianceQuestion } from "@/lib/cr-compliance-config";
+import { checkRepoDependencies, formatDependencyReply, looksLikeDependencyQuestion } from "@/lib/dependency-monitor";
 import { useAudit } from "@/lib/audit-store";
 import type { AutoStatus } from "@/lib/audit-data";
 import { EvidenceScreenshot, Mono } from "./atoms";
@@ -65,6 +66,7 @@ export function Cp38Copilot() {
   const runCp38 = useServerFn(runCp38Verification);
   const runCp10 = useServerFn(runCp10Verification);
   const runCr = useServerFn(runCrComplianceVerification);
+  const checkDependencies = useServerFn(checkRepoDependencies);
   const { checkpoints, completeStep, resolveCheckpoint, setCp10Verification, setCrVerification } = useAudit();
   const [open, setOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"floating" | "sidebar">("floating");
@@ -143,13 +145,20 @@ export function Cp38Copilot() {
     }
   };
 
+  const askDependencies = async () => {
+    const res = await checkDependencies();
+    setMessages((m) => [...m, { role: "assistant", text: formatDependencyReply(res) }]);
+  };
+
   const ask = async (question: string) => {
     if (!question.trim() || busy) return;
     setMessages((m) => [...m, { role: "user", text: question }]);
     setInput("");
     setBusy(true);
     try {
-      if (looksLikeCrComplianceQuestion(question)) {
+      if (looksLikeDependencyQuestion(question)) {
+        await askDependencies();
+      } else if (looksLikeCrComplianceQuestion(question)) {
         await askCr(question);
       } else if (looksLikeCp10Question(question)) {
         await askCp10(question);
