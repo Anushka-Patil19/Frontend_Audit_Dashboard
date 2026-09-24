@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { Bell, ChevronDown, Loader2 } from "lucide-react";
-import { checkRepoDependencies } from "@/lib/dependency-monitor";
-import type { DependencyResult } from "@/lib/version-checker";
+import { checkRepoDependencies, type DependencyResult } from "@/lib/api-client";
 
-// Polls the GitHub Dependency Version Monitoring POC (src/lib/dependency-monitor.ts)
+// Polls the GitHub Dependency Version Monitoring POC (backend/app/services/dependency_monitor.py)
 // and surfaces packages that need action — either a version update or a
 // switch away from a deprecated package — as a red notification bell,
 // matching the compliance-alert visual language used elsewhere
 // (bg-fail/text-fail). A package that's both up to date and not deprecated
 // is left out; nothing to action there.
 export function DependencyBell() {
-  const checkDependencies = useServerFn(checkRepoDependencies);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [results, setResults] = useState<DependencyResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +19,7 @@ export function DependencyBell() {
   const load = async () => {
     setState("loading");
     setError(null);
-    const res = await checkDependencies();
+    const res = await checkRepoDependencies();
     if (!res.ok) {
       setError(res.error);
       setState("error");

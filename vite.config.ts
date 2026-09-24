@@ -12,16 +12,4 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  vite: {
-    optimizeDeps: {
-      // playwright (used server-only, inside a createServerFn handler for CP10
-      // evidence screenshots) has an optional `await import("kerberos")` for
-      // proxy auth that's fine at runtime (Node's import + try/catch handles
-      // the missing optional dep) but crashes esbuild's static dep scan, which
-      // doesn't respect the try/catch. Excluding it from pre-bundling avoids
-      // that scan entirely; createServerFn's own build-time split still keeps
-      // playwright out of the actual client bundle.
-      exclude: ["playwright", "playwright-core"],
-    },
-  },
 });

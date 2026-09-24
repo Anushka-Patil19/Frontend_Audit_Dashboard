@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { Github, Mail, FolderClosed, SquareKanban, ImageIcon } from "lucide-react";
 import type { SourceKey, Status } from "@/lib/audit-data";
 import { statusLabel, statusTone } from "@/lib/audit-data";
-import { getCp10EvidenceScreenshot } from "@/lib/cp10-verify";
-import { getCp38EvidenceScreenshot } from "@/lib/cp38-verify";
+import { getCp10EvidenceScreenshot, getCp38EvidenceScreenshot } from "@/lib/api-client";
 
 export const tone = {
   ok: { text: "text-ok", bg: "bg-ok", border: "border-l-ok" },
@@ -75,14 +73,12 @@ export function EvidenceScreenshot({
   label?: string;
   alt?: string;
 }) {
-  const getCp10Screenshot = useServerFn(getCp10EvidenceScreenshot);
-  const getCp38Screenshot = useServerFn(getCp38EvidenceScreenshot);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   const load = async () => {
     setState("loading");
-    const getScreenshot = source === "cp10" ? getCp10Screenshot : getCp38Screenshot;
+    const getScreenshot = source === "cp10" ? getCp10EvidenceScreenshot : getCp38EvidenceScreenshot;
     const res = await getScreenshot({ data: { fileName } });
     if (!res) {
       setState("error");

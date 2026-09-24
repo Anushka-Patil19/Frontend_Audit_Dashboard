@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle, Circle, Undo2 } from "lucide-react";
-import type { CrGateStatus, GateState, CrComplianceResult } from "@/lib/cr-compliance-verify";
+import type { CrGateStatus, GateState, CrComplianceResult } from "@/lib/api-client";
 import { Mono } from "./atoms";
 
 const GATE_ORDER: { key: keyof CrGateStatus; label: string }[] = [
@@ -15,7 +15,7 @@ function GateIcon({ state }: { state: GateState }) {
 }
 
 // Unlike CP10's blocking gate stepper, Jira and GitHub are checked in
-// parallel here (see cr-compliance-verify.ts) — a "failed" row means that
+// parallel here (see backend/app/services/cr_compliance_verify.py) — a "failed" row means that
 // side's own condition wasn't met, not that a later check got skipped, so
 // there's no "— stopped here" note.
 export function CrComplianceProgress({

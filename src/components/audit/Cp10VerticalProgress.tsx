@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle, Circle, Undo2 } from "lucide-react";
-import type { Cp10GateStatus, GateState, Cp10Result } from "@/lib/cp10-verify";
+import type { Cp10GateStatus, GateState, Cp10Result } from "@/lib/api-client";
 import { EvidenceScreenshot } from "./atoms";
 
 const GATE_ORDER: { key: keyof Cp10GateStatus; label: string }[] = [
