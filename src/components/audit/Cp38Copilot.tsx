@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import logoGif from "./logo.gif";
 import {
   Bot,
@@ -69,6 +69,7 @@ const SUGGESTIONS = [
   "What's the status of PIT Armour's UAT sign-off?",
   "Check CP10 for PIT Armour.",
   "Can you tell me if ticket CR-POC-4 is compliant?",
+  "Which dependencies need to be upgraded?",
 ];
 
 export function Cp38Copilot() {
@@ -93,6 +94,13 @@ export function Cp38Copilot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep the latest message (or the "thinking" indicator) in view.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, busy, open]);
 
   const askCp38 = async (question: string) => {
     const { reply, result, config } = await runCp38({ data: { question } });
@@ -197,7 +205,7 @@ export function Cp38Copilot() {
           className={
             viewMode === "sidebar"
               ? "flex h-screen w-[380px] max-w-[100vw] flex-col border-l border-neutral-400 bg-white text-neutral-900 shadow-2xl animate-in slide-in-from-right duration-200 overflow-hidden"
-              : "flex min-h-[600px] max-h-[780px] w-[370px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-neutral-400 bg-white text-neutral-900 shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150 overflow-hidden"
+              : "flex h-[min(780px,calc(100vh-6rem))] w-[370px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-neutral-400 bg-white text-neutral-900 shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150 overflow-hidden"
           }
         >
           {/* Top Bar - Clean White Header */}
@@ -410,7 +418,10 @@ export function Cp38Copilot() {
           </div>
 
           {/* Chat Messages & Suggested prompts */}
-          <div className="flex-1 space-y-2.5 overflow-y-auto px-3.5 py-3 text-xs bg-white">
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3.5 py-3 text-xs bg-white"
+          >
             {messages.length === 0 ? (
               <div className="flex flex-col gap-2">
                 {SUGGESTIONS.map((s) => (
@@ -565,9 +576,9 @@ export function Cp38Copilot() {
           </div>
 
           {/* Bottom Prompt Card - Clean White Style */}
-          <div className="p-3 bg-white border-t border-neutral-100">
+          <div className="shrink-0 p-3 bg-white border-t border-neutral-100">
             {messages.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pb-2">
+              <div className="flex flex-wrap gap-1.5 pb-2 max-h-24 overflow-y-auto">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}

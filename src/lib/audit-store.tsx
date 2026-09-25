@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import {
   initialCheckpoints,
   initialConnectors,
@@ -10,9 +9,13 @@ import {
   type Connector,
   type FeedEntry,
 } from "./audit-data";
-import { syncMailConnector } from "./mail-connector";
-import type { Cp10GateStatus, Cp10Result } from "./cp10-verify";
-import type { CrGateStatus, CrComplianceResult } from "./cr-compliance-verify";
+import {
+  syncMailConnector,
+  type Cp10GateStatus,
+  type Cp10Result,
+  type CrGateStatus,
+  type CrComplianceResult,
+} from "./api-client";
 
 const CP10_GATE_ORDER: (keyof Cp10GateStatus)[] = ["llm", "mail", "jira"];
 
@@ -55,8 +58,6 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [cp10Result, setCp10Result] = useState<Cp10Result | null>(null);
   const [crGates, setCrGates] = useState<CrGateStatus>({ jira: "pending", branch: "pending", pr: "pending" });
   const [crResult, setCrResult] = useState<CrComplianceResult | null>(null);
-  const syncMail = useServerFn(syncMailConnector);
-
   useEffect(() => {
     setNow(new Date());
     const t = setInterval(() => {
@@ -218,7 +219,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         const name = connectors.find((c) => c.key === key)?.name ?? key;
 
         if (key === "mail") {
-          syncMail()
+          syncMailConnector()
             .then((result) => {
               setConnectors((cs) =>
                 cs.map((c) =>

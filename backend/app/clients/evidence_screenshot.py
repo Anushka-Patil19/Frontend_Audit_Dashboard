@@ -41,27 +41,32 @@ def _mail_evidence_file_name(checkpoint: str, project_id: str, message_id: str) 
 
 # Shared by both capture functions below: launch headless Chromium, render
 # the given HTML, screenshot it, and save under evidence/<fileName>.
-async def _render_and_save(page_html: str, file_name: str) -> str:
+# `selector`, when given, crops the screenshot to that element instead of
+# the full page.
+async def _render_and_save(page_html: str, file_name: str, selector: str | None = None) -> str:
     # On Windows, uvicorn --reload runs a SelectorEventLoop, which can't spawn
     # subprocesses — so Playwright gets its own Proactor loop on a worker thread.
-    return await asyncio.to_thread(_render_and_save_in_own_loop, page_html, file_name)
+    return await asyncio.to_thread(_render_and_save_in_own_loop, page_html, file_name, selector)
 
 
-def _render_and_save_in_own_loop(page_html: str, file_name: str) -> str:
+def _render_and_save_in_own_loop(page_html: str, file_name: str, selector: str | None) -> str:
     loop = asyncio.ProactorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_playwright_render_and_save(page_html, file_name))
+        return loop.run_until_complete(_playwright_render_and_save(page_html, file_name, selector))
     finally:
         loop.close()
 
 
-async def _playwright_render_and_save(page_html: str, file_name: str) -> str:
+async def _playwright_render_and_save(page_html: str, file_name: str, selector: str | None) -> str:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
             page = await browser.new_page(viewport={"width": 900, "height": 600})
             await page.set_content(page_html, wait_until="networkidle")
-            buffer = await page.screenshot(full_page=True)
+            if selector:
+                buffer = await page.locator(selector).screenshot()
+            else:
+                buffer = await page.screenshot(full_page=True)
 
             evidence_dir = _evidence_dir()
             evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -130,6 +135,84 @@ async def capture_approval_email_screenshot(
         return await _render_and_save(page_html, _mail_evidence_file_name(checkpoint, project_id, message_id))
     except Exception as error:
         print(f"{checkpoint.upper()} screenshot capture failed: {error}")
+        return None
+
+
+# CP16 dependency monitoring evidence — rendered from the live PyPI check
+# results (not a static image), so the screenshot always reflects what
+# requirements.txt looked like at the moment the check ran. Same "log and
+# swallow" failure policy as the email capture above.
+async def capture_dependency_alerts_screenshot(results: list, checked_at: datetime) -> str | None:
+    try:
+        flagged = [r for r in results if r.status == "UPDATE_AVAILABLE" or r.deprecated]
+        rows: list[str] = []
+        for r in flagged:
+            if r.deprecated:
+                source = (
+                    "PyPI official classifier (Development Status :: 7 - Inactive)"
+                    if r.deprecation_source == "official-classifier"
+                    else "maintainer's own package description"
+                )
+                replacement = f" — use {html.escape(r.replacement_package)} instead" if r.replacement_package else ""
+                rows.append(
+                    f"""<div class="row">
+  <div class="line"><span class="pkg">{html.escape(r.package)}</span>
+    <span class="ver">→ {html.escape(r.replacement_package or "see notice")}</span>
+    <span class="tag dep">deprecated</span></div>
+  <div class="note">You're using {html.escape(r.package)} ({html.escape(r.current_version)}), but it's deprecated{replacement}.
+    <div class="src">Source: {source}</div></div>
+</div>"""
+                )
+            else:
+                rows.append(
+                    f"""<div class="row"><div class="line"><span class="pkg">{html.escape(r.package)}</span>
+    <span class="ver">{html.escape(r.current_version)} → {html.escape(r.latest_version or "?")}</span>
+    <span class="tag upd">update</span></div></div>"""
+                )
+
+        updates = sum(1 for r in flagged if not r.deprecated)
+        deprecated = len(flagged) - updates
+        body = "".join(rows) or '<div class="empty">Everything is up to date.</div>'
+        captured = checked_at.astimezone(ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %I:%M:%S %p IST")
+
+        page_html = f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {{ font-family: -apple-system, "Segoe UI", Arial, sans-serif; margin: 0; padding: 16px; background: #fff; }}
+  .card {{ width: 400px; background: #fff; border: 1px solid #dfe1e6; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.08); }}
+  .head {{ padding: 12px 14px; border-bottom: 1px solid #ebecf0; }}
+  .title {{ font-size: 14px; font-weight: 600; color: #172b4d; }}
+  .meta {{ font-size: 11px; color: #6b778c; margin-top: 3px; }}
+  .list {{ padding: 8px; }}
+  .row {{ padding: 7px 8px; font-size: 13px; }}
+  .line {{ display: flex; justify-content: space-between; gap: 8px; align-items: center; }}
+  .pkg {{ font-family: Consolas, monospace; color: #172b4d; }}
+  .ver {{ font-family: Consolas, monospace; color: #97a0af; flex: 1; text-align: center; }}
+  .tag {{ font-weight: 600; }}
+  .upd {{ color: #b7791f; }}
+  .dep {{ color: #c9372c; }}
+  .note {{ margin-top: 5px; padding: 5px 7px; border: 1px solid #f5c2bd; background: #fdecea; border-radius: 4px; color: #c9372c; font-size: 12px; }}
+  .src {{ font-size: 10px; opacity: .75; margin-top: 3px; }}
+  .empty {{ padding: 10px 8px; font-size: 12px; color: #6b778c; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="head">
+      <div class="title">Dependency alerts</div>
+      <div class="meta">requirements.txt · {len(results)} tracked · {updates} update, {deprecated} deprecated · captured {html.escape(captured)}</div>
+    </div>
+    <div class="list">{body}</div>
+  </div>
+</body>
+</html>"""
+
+        file_name = f"cp16-dependencies-{checked_at.strftime('%Y%m%d%H%M%S%f')}.png"
+        return await _render_and_save(page_html, file_name, selector=".card")
+    except Exception as error:
+        print(f"CP16 dependency screenshot capture failed: {error}")
         return None
 
 

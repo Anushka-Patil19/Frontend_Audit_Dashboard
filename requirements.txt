@@ -5,7 +5,7 @@ fastapi==0.141.1
 requests==2.34.2
 
 # Data Processing
-pandas==3.0.6
+pandas==2.2.3
 
 # Deprecated — numpy's own historical predecessor, officially marked
 # "Development Status :: 7 - Inactive" on PyPI
@@ -20,6 +20,3 @@ flask==3.0.0
 # Deprecated — PyPI listing says "use scikit-learn instead"
 sklearn==0.0.post12
 # scikit-learn==1.9.1
-
-# Deprecated — PyPI listing says "See the 'parameterized' package"
-nose-parameterized==0.6.0

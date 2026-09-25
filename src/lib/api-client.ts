@@ -188,10 +188,25 @@ export type DependencyResult = {
   replacementPackage: string | null;
 };
 
-export type DependencyMonitorResult = { ok: true; results: DependencyResult[] } | { ok: false; error: string };
+export type DependencyMonitorResult =
+  | { ok: true; results: DependencyResult[]; checkedAt: string | null; evidenceScreenshot: string | null }
+  | { ok: false; error: string };
 
-export async function checkRepoDependencies(): Promise<DependencyMonitorResult> {
-  return apiFetch("/api/dependencies/check", { method: "GET" });
+// captureEvidence asks the backend to also screenshot this run's results
+// (used by the CP16 evidence panel) — skipped by default since it spins up
+// a headless browser.
+export async function checkRepoDependencies(
+  { captureEvidence = false }: { captureEvidence?: boolean } = {},
+): Promise<DependencyMonitorResult> {
+  return apiFetch(`/api/dependencies/check${captureEvidence ? "?capture_evidence=true" : ""}`, { method: "GET" });
+}
+
+export async function getDependencyEvidenceScreenshot({
+  data,
+}: {
+  data: { fileName: string };
+}): Promise<{ dataUrl: string } | null> {
+  return apiFetchOrNull(`/api/dependencies/evidence?file_name=${encodeURIComponent(data.fileName)}`);
 }
 
 // Reports packages needing action — either a version update, or a switch

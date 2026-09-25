@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+
+from app.clients.evidence_screenshot import capture_dependency_alerts_screenshot
 from app.clients.github_client import fetch_repo_file
 from app.clients.version_checker import check_all_dependencies
 from app.models import DependencyMonitorError, DependencyMonitorOk, DependencyMonitorResult, DependencyResult
@@ -7,12 +10,20 @@ REPO = "Frontend_Audit_Dashboard"
 BRANCH = "main"
 
 
-async def check_repo_dependencies() -> DependencyMonitorResult:
+# capture_evidence is opt-in: only the CP16 evidence panel needs a fresh
+# screenshot, so the bell and the copilot chat skip the headless-browser cost.
+async def check_repo_dependencies(capture_evidence: bool = False) -> DependencyMonitorResult:
     file = await fetch_repo_file(OWNER, REPO, "requirements.txt", BRANCH)
     if not file["ok"]:
         return DependencyMonitorError(error=file["error"])
     results = await check_all_dependencies(file["content"])
-    return DependencyMonitorOk(results=results)
+    checked_at = datetime.now(timezone.utc)
+    screenshot = await capture_dependency_alerts_screenshot(results, checked_at) if capture_evidence else None
+    return DependencyMonitorOk(
+        results=results,
+        checked_at=checked_at.isoformat(),
+        evidence_screenshot=screenshot,
+    )
 
 
 # Reports packages needing action — either a version update, or a switch

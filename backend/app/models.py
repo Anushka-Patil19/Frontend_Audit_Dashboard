@@ -171,8 +171,12 @@ class DependencyResult(BaseModel):
 
 
 class DependencyMonitorOk(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     ok: Literal[True] = True
     results: list[DependencyResult]
+    checked_at: str | None = Field(default=None, alias="checkedAt")
+    evidence_screenshot: str | None = Field(default=None, alias="evidenceScreenshot")
 
 
 class DependencyMonitorError(BaseModel):

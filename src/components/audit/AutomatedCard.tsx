@@ -6,6 +6,7 @@ import { useAudit } from "@/lib/audit-store";
 import { EvidenceScreenshot, HistoryStrip, Mono, SourceBadge, StatusPill, tone } from "./atoms";
 import { Cp10VerticalProgress } from "./Cp10VerticalProgress";
 import { CrComplianceProgress } from "./CrComplianceProgress";
+import { DependencyEvidence } from "./DependencyEvidence";
 
 type Props = {
   cp: AutomatedCheckpoint;
@@ -27,6 +28,7 @@ export function AutomatedCard({ cp, onResolve }: Props) {
   const t = tone[statusTone[cp.status]];
   const isCp10 = cp.id === "cp-10";
   const isCr = cp.id === "cp-18";
+  const isCp16 = cp.id === "cp-16";
 
   return (
     <div className={`border-l-2 ${t.border} bg-panel`}>
@@ -115,6 +117,8 @@ export function AutomatedCard({ cp, onResolve }: Props) {
                     <EvidenceScreenshot fileName={cp10Result.evidence_screenshot} source="cp10" />
                   </div>
                 </>
+              ) : isCp16 ? (
+                <DependencyEvidence />
               ) : cp.evidenceImage ? (
                 <>
                   <div className="border-b border-border px-3 py-1.5">
