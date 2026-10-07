@@ -124,6 +124,7 @@ class CrComplianceResult(BaseModel):
     pr_merged_by: str | None
     merger_matches: bool
     pr_url: str | None
+    evidence_screenshot: str | None = None
     timestamp: str
 
 
@@ -185,3 +186,36 @@ class DependencyMonitorError(BaseModel):
 
 
 DependencyMonitorResult = DependencyMonitorOk | DependencyMonitorError
+
+
+# --- Developer invites ---------------------------------------------------
+
+
+class CreateInviteRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    email: str
+    project_id: str = Field(alias="projectId")
+    project_name: str = Field(alias="projectName")
+    invited_by: str | None = Field(default=None, alias="invitedBy")
+
+
+class Invite(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    token: str
+    email: str
+    project_id: str = Field(alias="projectId")
+    project_name: str = Field(alias="projectName")
+    role: Literal["developer"] = "developer"
+    invited_by: str | None = Field(default=None, alias="invitedBy")
+    created_at: str = Field(alias="createdAt")
+
+
+class CreateInviteResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    invite: Invite
+    link: str
+    email_sent: bool = Field(alias="emailSent")
+    email_error: str | None = Field(default=None, alias="emailError")

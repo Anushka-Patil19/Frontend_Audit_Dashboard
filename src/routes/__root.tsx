@@ -4,6 +4,8 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
+  Navigate,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -13,6 +15,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuditProvider } from "../lib/audit-store";
 import { AuthProvider, useAuth } from "../lib/auth-store";
+import { RoleProvider, useRole } from "../lib/role-store";
 import { SignInScreen } from "../components/layout/SignInScreen";
 import { AppSidebar, MobileNav } from "../components/layout/AppSidebar";
 import { Cp38Copilot } from "../components/audit/Cp38Copilot";
@@ -129,10 +132,24 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function AppShell() {
-  const { session, ready } = useAuth();
+  return (
+    <RoleProvider>
+      <GatedShell />
+    </RoleProvider>
+  );
+}
 
-  if (!ready) return <div className="min-h-screen bg-background" />;
-  if (!session) return <SignInScreen />;
+function GatedShell() {
+  const { session, ready } = useAuth();
+  const { invite, ready: roleReady } = useRole();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  // The invite landing page validates its own token, so it sits outside the sign-in gate.
+  if (pathname.startsWith("/invite/")) return <Outlet />;
+  if (!ready || !roleReady) return <div className="min-h-screen bg-background" />;
+  if (!session && !invite) return <SignInScreen />;
+  // Invited developers only get the Developer home view of their project.
+  if (invite && pathname !== "/") return <Navigate to="/" replace />;
 
   return (
     <AuditProvider>
@@ -146,7 +163,7 @@ function AppShell() {
           </div>
         </div>
       </div>
-      <Cp38Copilot />
+      {!invite && <Cp38Copilot />}
     </AuditProvider>
   );
 }

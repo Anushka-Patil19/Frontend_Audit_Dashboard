@@ -1,6 +1,6 @@
 import { CheckCircle2, XCircle, Circle, Undo2 } from "lucide-react";
 import type { CrGateStatus, GateState, CrComplianceResult } from "@/lib/api-client";
-import { Mono } from "./atoms";
+import { EvidenceScreenshot, Mono } from "./atoms";
 
 const GATE_ORDER: { key: keyof CrGateStatus; label: string }[] = [
   { key: "jira", label: "Jira Approval" },
@@ -85,6 +85,14 @@ export function CrComplianceProgress({
             >
               View pull request
             </a>
+          )}
+          {result.evidence_screenshot && (
+            <EvidenceScreenshot
+              fileName={result.evidence_screenshot}
+              source="cr"
+              label="View pull request screenshot"
+              alt="Screenshot of the pull request on GitHub"
+            />
           )}
         </div>
       )}

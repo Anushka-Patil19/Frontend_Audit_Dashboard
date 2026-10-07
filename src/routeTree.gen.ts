@@ -16,6 +16,7 @@ import { Route as ControlsRouteImport } from './routes/controls'
 import { Route as FindingsRouteImport } from './routes/findings'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ConnectorsSourceRouteImport } from './routes/connectors.$source'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +53,11 @@ const ConnectorsSourceRoute = ConnectorsSourceRouteImport.update({
   path: '/$source',
   getParentRoute: () => ConnectorsRoute,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/findings': typeof FindingsRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
+  '/invite/$token': typeof InviteTokenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByTo {
   '/findings': typeof FindingsRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
+  '/invite/$token': typeof InviteTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,6 +88,7 @@ export interface FileRoutesById {
   '/findings': typeof FindingsRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
+  '/invite/$token': typeof InviteTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/findings'
     | '/projects'
     | '/connectors/$source'
+    | '/invite/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
     | '/findings'
     | '/projects'
     | '/connectors/$source'
+    | '/invite/$token'
   id:
     | '__root__'
     | '/'
@@ -109,6 +120,7 @@ export interface FileRouteTypes {
     | '/findings'
     | '/projects'
     | '/connectors/$source'
+    | '/invite/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   ControlsRoute: typeof ControlsRoute
   FindingsRoute: typeof FindingsRoute
   ProjectsRoute: typeof ProjectsRoute
+  InviteTokenRoute: typeof InviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -171,6 +184,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsSourceRouteImport
       parentRoute: typeof ConnectorsRoute
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -193,6 +213,7 @@ const rootRouteChildren: RootRouteChildren = {
   ControlsRoute: ControlsRoute,
   FindingsRoute: FindingsRoute,
   ProjectsRoute: ProjectsRoute,
+  InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

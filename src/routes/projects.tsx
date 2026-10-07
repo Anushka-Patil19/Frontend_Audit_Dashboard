@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   ArrowLeft,
   Search,
@@ -12,6 +12,8 @@ import {
   FolderKanban,
   FileText,
   Download,
+  Plus,
+  RotateCcw,
 } from "lucide-react";
 import {
   checkpointModule,
@@ -27,15 +29,16 @@ import { AutomatedCard } from "@/components/audit/AutomatedCard";
 import { ManualCard } from "@/components/audit/ManualCard";
 import { ModuleGrid } from "@/components/audit/ModuleGrid";
 import { AuditReportModal } from "@/components/audit/AuditReportModal";
+import { AddProjectModal } from "@/components/audit/AddProjectModal";
 import { DependencyBell } from "@/components/audit/DependencyBell";
+import { CopilotSimulate } from "@/components/audit/CopilotSimulate";
 import { Rollup } from "@/components/audit/panels";
 import { Mono, SectionHeading } from "@/components/audit/atoms";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 export const Route = createFileRoute("/projects")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    project: typeof search.project === "string" ? search.project : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { project?: string } =>
+    typeof search["project"] === "string" ? { project: search["project"] } : {},
   head: () => ({
     meta: [
       { title: "Projects — Audit Intelligence" },
@@ -60,6 +63,7 @@ interface ProjectMeta {
   id: string;
   name: string;
   client: string;
+  businessUnit: "Enterprise" | "Operation" | "FnA";
   description: string;
   compliancePct: number;
   checkpointsCount: number;
@@ -126,9 +130,25 @@ function ProjectsPage() {
   const [status, setStatus] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
+  const [selectedBu, setSelectedBu] = useState<string>("all");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [reportTargetProject, setReportTargetProject] = useState<ProjectMeta | null>(null);
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsOnboarded(window.localStorage.getItem("pitArmourOnboardingComplete") === "true");
+    }
+  }, []);
+
+  const handleResetOnboarding = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("pitArmourOnboardingComplete");
+    }
+    setIsOnboarded(false);
+  };
 
   const automatedCount = checkpoints.filter((c) => c.kind === "automated").length;
   const manualCount = checkpoints.length - automatedCount;
@@ -143,12 +163,13 @@ function ProjectsPage() {
     (c) => c.status === "non-compliant" || c.status === "needs-review",
   ).length;
 
-  const projectsList: ProjectMeta[] = useMemo(
+  const rawProjectsList: ProjectMeta[] = useMemo(
     () => [
       {
         id: "project-a",
         name: "PIT Armour",
         client: "ACME-CLT-01 — Acme Capital",
+        businessUnit: "Enterprise",
         description: "Production IT Armour Platform — Core Banking & Financial Systems Governance covering Application Governance, Change Management, Secure SDLC, Access Control, and Continuous Verification.",
         compliancePct: projectCompliancePct,
         checkpointsCount: checkpoints.length,
@@ -163,6 +184,7 @@ function ProjectsPage() {
         id: "project-b",
         name: "SAATHI",
         client: "ACME-CLT-02 — Acme Capital",
+        businessUnit: "Operation",
         description: "SAATHI — Merchant Payment Gateway & Digital Financial Services: IAM policies, API security controls, and transaction compliance.",
         compliancePct: 91,
         checkpointsCount: 12,
@@ -175,6 +197,7 @@ function ProjectsPage() {
         id: "project-c",
         name: "MPS",
         client: "ACME-CLT-03 — Acme Capital",
+        businessUnit: "FnA",
         description: "MPS — Risk Analytics & BI Cloud Data Platform: Snowflake pipeline compliance, PII masking rules, and access authorization.",
         compliancePct: 82,
         checkpointsCount: 8,
@@ -187,17 +210,27 @@ function ProjectsPage() {
     [checkpoints.length, automatedCount, manualCount, projectCompliancePct, attentionCount],
   );
 
+  const projectsList = useMemo(() => {
+    if (!isOnboarded) {
+      return rawProjectsList.filter((p) => p.id !== "project-a");
+    }
+    return rawProjectsList;
+  }, [rawProjectsList, isOnboarded]);
+
   const filteredProjects = useMemo(() => {
-    const q = projectSearch.trim().toLowerCase();
-    if (!q) return projectsList;
-    return projectsList.filter(
-      (p) =>
+    return projectsList.filter((p) => {
+      if (selectedBu !== "all" && p.businessUnit !== selectedBu) return false;
+      const q = projectSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
         p.name.toLowerCase().includes(q) ||
         p.client.toLowerCase().includes(q) ||
+        p.businessUnit.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        p.submodules.some((s) => s.toLowerCase().includes(q)),
-    );
-  }, [projectsList, projectSearch]);
+        p.submodules.some((s) => s.toLowerCase().includes(q))
+      );
+    });
+  }, [projectsList, projectSearch, selectedBu]);
 
   const selectProject = (id: string | null) => {
     setOpenModule(null);
@@ -208,7 +241,7 @@ function ProjectsPage() {
     });
   };
 
-  const selectedProjectMeta = projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0];
+  const selectedProjectMeta = projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0] ?? null;
 
   const moduleCheckpoints = useMemo(
     () => (openModule ? checkpoints.filter((c) => checkpointModule[c.id] === openModule) : []),
@@ -269,6 +302,28 @@ function ProjectsPage() {
         <PageHeader
           title="Projects"
           subtitle="Compliance environments & audit project ledgers — Acme Capital"
+          titleAction={
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsAddProjectOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-all cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Project</span>
+              </button>
+
+              {isOnboarded && (
+                <button
+                  onClick={handleResetOnboarding}
+                  title="Undo Onboarding (Hide PIT Armour for Demo Reset)"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-panel px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer shadow-xs"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 text-primary" />
+                  <span>Undo Onboarding</span>
+                </button>
+              )}
+            </div>
+          }
         />
 
         {/* Quick KPI Rollup for Projects */}
@@ -341,6 +396,39 @@ function ProjectsPage() {
             </span>
           </div>
 
+          {/* Business Unit Filter Bar */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-3">
+            <span className="text-xs font-medium text-muted-foreground mr-1">Business Unit:</span>
+            {[
+              { id: "all", label: "All Business Units", count: projectsList.length },
+              { id: "Enterprise", label: "Enterprise", count: projectsList.filter((p) => p.businessUnit === "Enterprise").length },
+              { id: "Operation", label: "Operation", count: projectsList.filter((p) => p.businessUnit === "Operation").length },
+              { id: "FnA", label: "FnA", count: projectsList.filter((p) => p.businessUnit === "FnA").length },
+            ].map((bu) => {
+              const active = selectedBu === bu.id;
+              return (
+                <button
+                  key={bu.id}
+                  onClick={() => setSelectedBu(bu.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+                    active
+                      ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                      : "border border-border bg-panel text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  <span>{bu.label}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                      active ? "bg-white/20 text-white" : "bg-panel-2 text-faint"
+                    }`}
+                  >
+                    {bu.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filteredProjects.map((project) => (
               <button
@@ -352,7 +440,7 @@ function ProjectsPage() {
                     : "border-border bg-panel"
                 }`}
               >
-                {/* Header with folder badge and status */}
+                {/* Header with folder badge, BU badge and status */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary-soft text-primary transition-transform group-hover:scale-105">
@@ -360,6 +448,9 @@ function ProjectsPage() {
                     </span>
                     <span className="rounded-full bg-panel-2 px-2.5 py-0.5 text-[11px] font-medium text-foreground">
                       Folder
+                    </span>
+                    <span className="rounded-full bg-primary-soft/80 px-2 py-0.5 text-[10px] font-mono font-medium text-primary border border-primary/20">
+                      BU: {project.businessUnit}
                     </span>
                   </div>
 
@@ -462,9 +553,22 @@ function ProjectsPage() {
             checkpoints={checkpoints}
           />
         )}
+
+        <AddProjectModal
+          isOpen={isAddProjectOpen}
+          onClose={() => setIsAddProjectOpen(false)}
+          onSuccess={() => {
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("pitArmourOnboardingComplete", "true");
+            }
+            setIsOnboarded(true);
+          }}
+        />
       </div>
     );
   }
+
+  if (!selectedProjectMeta) return null;
 
   // LEVEL 2: Project Detail View (e.g. Project - A) with Controls & Modules
   return (
@@ -488,8 +592,12 @@ function ProjectsPage() {
           <span className="text-muted-foreground">Controls</span>
         </div>
 
-        {/* Dependency version alerts (GitHub Dependency Version Monitoring POC) */}
-        <DependencyBell />
+        <div className="flex items-center gap-2">
+          {/* Runs every copilot question at once — separate from the dependency alerts */}
+          <CopilotSimulate />
+          {/* Dependency version alerts (GitHub Dependency Version Monitoring POC) */}
+          <DependencyBell />
+        </div>
       </div>
 
       <PageHeader

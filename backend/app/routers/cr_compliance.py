@@ -1,7 +1,11 @@
-from fastapi import APIRouter
+import base64
+
+from fastapi import APIRouter, HTTPException
+
+from app.clients.evidence_screenshot import read_evidence_screenshot
 
 from app.config.cr_compliance_config import cr_compliance_configs, extract_ticket_key, resolve_cr_compliance_project
-from app.models import CrGateStatus, CrVerifyResponse, QuestionRequest
+from app.models import CrGateStatus, CrVerifyResponse, EvidenceScreenshotResponse, QuestionRequest
 from app.services.cr_compliance_verify import verify_cr_compliance
 
 router = APIRouter(prefix="/api/cr-compliance", tags=["cr-compliance"])
@@ -34,3 +38,11 @@ async def verify(body: QuestionRequest) -> CrVerifyResponse:
             reply=f'I don\'t have a GitHub repo configured for project "{project_prefix}". Known projects: {known}.',
         )
     return await verify_cr_compliance(ticket_key, cfg)
+
+
+@router.get("/evidence", response_model=EvidenceScreenshotResponse, response_model_by_alias=True)
+async def evidence(file_name: str) -> EvidenceScreenshotResponse:
+    buffer = await read_evidence_screenshot(file_name)
+    if buffer is None:
+        raise HTTPException(status_code=404, detail="Evidence screenshot not found")
+    return EvidenceScreenshotResponse(dataUrl=f"data:image/png;base64,{base64.b64encode(buffer).decode()}")

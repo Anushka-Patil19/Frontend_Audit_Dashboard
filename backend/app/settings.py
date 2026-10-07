@@ -20,6 +20,10 @@ class Settings(BaseSettings):
 
     frontend_origin: str = "http://localhost:8080"
     evidence_dir: str = "evidence"
+    invites_file: str = "invites.json"
+    # Saved Outlook on the web login (scripts/outlook_login.py) used to screenshot
+    # the real email in Outlook. Without it, the email is re-rendered from Graph.
+    outlook_session_file: str = "outlook_session.json"
 
 
 settings = Settings()

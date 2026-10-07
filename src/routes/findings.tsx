@@ -39,9 +39,8 @@ import { Mono, SectionHeading } from "@/components/audit/atoms";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 export const Route = createFileRoute("/findings")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    project: typeof search.project === "string" ? search.project : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { project?: string } =>
+    typeof search["project"] === "string" ? { project: search["project"] } : {},
   head: () => ({
     meta: [
       { title: "Open Findings — Audit Intelligence" },
@@ -114,9 +113,7 @@ function FindingsPage() {
     setSelectedProject(id);
     navigate({
       to: "/findings",
-      search: {
-        project: id === "all" ? undefined : id,
-      },
+      search: id === "all" ? {} : { project: id },
       replace: true,
     });
   };
@@ -137,7 +134,8 @@ function FindingsPage() {
 
   // Project finding counts for selector buttons
   const projectCounts = useMemo(() => {
-    const counts: Record<string, { total: number; high: number }> = {
+    type Count = { total: number; high: number };
+    const counts: { all: Count; "project-a": Count; "project-b": Count; "project-c": Count } & Record<string, Count | undefined> = {
       all: { total: 0, high: 0 },
       "project-a": { total: 0, high: 0 },
       "project-b": { total: 0, high: 0 },
@@ -149,9 +147,10 @@ function FindingsPage() {
       if (isFinding) {
         counts.all.total += 1;
         if (isHigh) counts.all.high += 1;
-        if (c.projectId && counts[c.projectId]) {
-          counts[c.projectId].total += 1;
-          if (isHigh) counts[c.projectId].high += 1;
+        const projectCount = c.projectId ? counts[c.projectId] : undefined;
+        if (projectCount) {
+          projectCount.total += 1;
+          if (isHigh) projectCount.high += 1;
         }
       }
     });

@@ -2,9 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import logoGif from "./logo.gif";
 import {
   Bot,
-  CheckCircle2,
-  XCircle,
-  Clock,
   X,
   ArrowRight,
   ArrowUp,
@@ -35,27 +32,17 @@ import {
   type Cp10Result,
   runCrComplianceVerification,
   type CrComplianceResult,
-  type CrOutcomeId,
   checkRepoDependencies,
   formatDependencyReply,
 } from "@/lib/api-client";
 import {
+  COPILOT_SUGGESTIONS,
   looksLikeCp10Question,
   looksLikeCrComplianceQuestion,
   looksLikeDependencyQuestion,
 } from "@/lib/copilot-routing";
-import { useAudit } from "@/lib/audit-store";
-import type { AutoStatus } from "@/lib/audit-data";
-import { EvidenceScreenshot, Mono } from "./atoms";
-
-// AutoStatus only has three buckets, so In Progress and Pending both land
-// on "needs-review" — the chat bubble still shows the full four-way outcome.
-const CR_OUTCOME_TO_STATUS: Record<CrOutcomeId, AutoStatus> = {
-  "CR-C": "compliant",
-  "CR-NC": "non-compliant",
-  "CR-IP": "needs-review",
-  "CR-Pending": "needs-review",
-};
+import { useLedgerSync } from "@/lib/use-ledger-sync";
+import { CopilotResultDetails } from "./CopilotResultDetails";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -65,19 +52,14 @@ type ChatMessage = {
   crResult?: CrComplianceResult | null;
 };
 
-const SUGGESTIONS = [
-  "What's the status of PIT Armour's UAT sign-off?",
-  "Check CP10 for PIT Armour.",
-  "Can you tell me if ticket CR-POC-4 is compliant?",
-  "Which dependencies need to be upgraded?",
-];
+const SUGGESTIONS = COPILOT_SUGGESTIONS;
 
 export function Cp38Copilot() {
   const runCp38 = runCp38Verification;
   const runCp10 = runCp10Verification;
   const runCr = runCrComplianceVerification;
   const checkDependencies = checkRepoDependencies;
-  const { checkpoints, completeStep, resolveCheckpoint, setCp10Verification, setCrVerification } = useAudit();
+  const { applyCp38, applyCp10, applyCr } = useLedgerSync();
   const [open, setOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"floating" | "sidebar">("floating");
   const [showSwitchMenu, setShowSwitchMenu] = useState(false);
@@ -103,63 +85,23 @@ export function Cp38Copilot() {
   }, [messages, busy, open]);
 
   const askCp38 = async (question: string) => {
-    const { reply, result, config } = await runCp38({ data: { question } });
-    setMessages((m) => [...m, { role: "assistant", text: reply, cp38Result: result }]);
-
-    // Compliant per the copilot's real, LLM-gated verification — reflect
-    // that in the checkpoint ledger by auto-completing its remaining step,
-    // attributed to the copilot rather than the demo human auditor.
-    if (result?.outcome_id === "CP38-C" && config?.ledgerId) {
-      const cp = checkpoints.find((c) => c.id === config.ledgerId);
-      if (cp && cp.kind === "manual") {
-        const pendingIndex = cp.steps.findIndex((s) => s.state === "pending");
-        if (pendingIndex !== -1) {
-          completeStep(config.ledgerId, pendingIndex, "CP38 Copilot (AI-verified)");
-        }
-      }
-    }
+    const res = await runCp38({ data: { question } });
+    setMessages((m) => [...m, { role: "assistant", text: res.reply, cp38Result: res.result }]);
+    applyCp38(res);
   };
 
   const askCp10 = async (question: string) => {
-    const { reply, result, gates, config } = await runCp10({ data: { question } });
-    // Gate progress itself is shared with the ledger card (AutomatedCard
-    // renders the vertical progress + Undo for cp-10 from this same state) —
-    // no duplicate stepper here in the chat. The result (incl. the evidence
-    // screenshot) is still worth showing inline on the reply itself, though.
-    setMessages((m) => [...m, { role: "assistant", text: reply, cp10Result: result }]);
-    setCp10Verification(result, gates);
-    if (result?.outcome_id === "CP10-C" && config?.ledgerId) {
-      resolveCheckpoint(
-        config.ledgerId,
-        "compliant",
-        "Verified",
-        reply.split("\n").slice(1).join(" "),
-        "CP10 Copilot (AI-verified)",
-      );
-    }
+    const res = await runCp10({ data: { question } });
+    // The ledger card renders the gate stepper; the chat just shows the result
+    // (incl. the evidence screenshot) inline on the reply.
+    setMessages((m) => [...m, { role: "assistant", text: res.reply, cp10Result: res.result }]);
+    applyCp10(res);
   };
 
   const askCr = async (question: string) => {
-    const { reply, result, gates, config } = await runCr({ data: { question } });
-    // Shared with the cp-18 ledger card (AutomatedCard renders
-    // CrComplianceProgress from this same state), same pattern as CP10.
-    setMessages((m) => [...m, { role: "assistant", text: reply, crResult: result }]);
-    setCrVerification(result, gates);
-
-    // Reflects into the checkpoint ledger regardless of outcome (not just
-    // Compliant) — a Non-Compliant result (merged without approval, or by
-    // the wrong person) is exactly the kind of thing this control exists to
-    // surface, so it belongs on the ledger too, not just Compliant ones.
-    if (result && config?.ledgerId) {
-      const status = CR_OUTCOME_TO_STATUS[result.outcome_id];
-      resolveCheckpoint(
-        config.ledgerId,
-        status,
-        "Verified",
-        `${result.jira_ticket}: ${reply.split("\n").slice(1).join(" ")}`,
-        "CR Compliance Copilot (AI-verified)",
-      );
-    }
+    const res = await runCr({ data: { question } });
+    setMessages((m) => [...m, { role: "assistant", text: res.reply, crResult: res.result }]);
+    applyCr(res);
   };
 
   const askDependencies = async () => {
@@ -448,121 +390,7 @@ export function Cp38Copilot() {
                 >
                   <pre className="whitespace-pre-wrap font-sans">{m.text}</pre>
 
-                  {m.cp38Result && (
-                    <div className="mt-3 border-t border-neutral-200 pt-2.5 text-[11px]">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {m.cp38Result.outcome_id === "CP38-C" ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> CP38-Compliant
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                            <Clock className="h-3.5 w-3.5" /> CP38-Pending
-                            {m.cp38Result.pending_reason ? ` · ${m.cp38Result.pending_reason}` : ""}
-                          </span>
-                        )}
-                        {m.cp38Result.confidence != null && (
-                          <Mono className="text-neutral-500">conf. {m.cp38Result.confidence}%</Mono>
-                        )}
-                        {m.cp38Result.evidence_ref && (
-                          <Mono className="text-neutral-500">
-                            ref {m.cp38Result.evidence_ref.slice(0, 10)}…
-                          </Mono>
-                        )}
-                      </div>
-                      {m.cp38Result.evidence_screenshot && (
-                        <EvidenceScreenshot
-                          fileName={m.cp38Result.evidence_screenshot}
-                          source="cp38"
-                          label="View sign-off email screenshot"
-                          alt="Screenshot of the UAT sign-off email"
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {m.cp10Result && (
-                    <div className="mt-3 border-t border-neutral-200 pt-2.5 text-[11px]">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {m.cp10Result.outcome_id === "CP10-C" ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> CP10-Compliant
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                            <Clock className="h-3.5 w-3.5" /> CP10-Pending
-                            {m.cp10Result.pending_reason ? ` · ${m.cp10Result.pending_reason}` : ""}
-                          </span>
-                        )}
-                        {m.cp10Result.confidence != null && (
-                          <Mono className="text-neutral-500">conf. {m.cp10Result.confidence}%</Mono>
-                        )}
-                        {m.cp10Result.evidence_ref && (
-                          <Mono className="text-neutral-500">
-                            ref {m.cp10Result.evidence_ref.slice(0, 10)}…
-                          </Mono>
-                        )}
-                      </div>
-                      {m.cp10Result.evidence_screenshot && (
-                        <EvidenceScreenshot
-                          fileName={m.cp10Result.evidence_screenshot}
-                          source="cp10"
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {m.crResult && (
-                    <div className="mt-3 border-t border-neutral-200 pt-2.5 text-[11px]">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {m.crResult.outcome_id === "CR-C" && (
-                          <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> CR-Compliant
-                          </span>
-                        )}
-                        {m.crResult.outcome_id === "CR-NC" && (
-                          <span className="inline-flex items-center gap-1 text-red-600 font-medium">
-                            <XCircle className="h-3.5 w-3.5" /> CR-Non-Compliant
-                          </span>
-                        )}
-                        {m.crResult.outcome_id === "CR-IP" && (
-                          <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                            <Clock className="h-3.5 w-3.5" /> CR-In Progress
-                          </span>
-                        )}
-                        {m.crResult.outcome_id === "CR-Pending" && (
-                          <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
-                            <Clock className="h-3.5 w-3.5" /> CR-Pending
-                          </span>
-                        )}
-                        {m.crResult.jira_status && (
-                          <Mono className="text-neutral-500">jira {m.crResult.jira_status}</Mono>
-                        )}
-                        {m.crResult.pr_number != null && (
-                          <Mono className="text-neutral-500">
-                            PR #{m.crResult.pr_number} ·{" "}
-                            {m.crResult.pr_merged ? `merged by ${m.crResult.pr_merged_by ?? "unknown"}` : m.crResult.pr_state}
-                          </Mono>
-                        )}
-                        {m.crResult.required_merger && (
-                          <Mono className={m.crResult.merger_matches ? "text-emerald-600" : "text-red-600"}>
-                            requires @{m.crResult.required_merger}
-                            {m.crResult.pr_merged ? (m.crResult.merger_matches ? " ✓" : " ✗") : ""}
-                          </Mono>
-                        )}
-                      </div>
-                      {m.crResult.pr_url && (
-                        <a
-                          href={m.crResult.pr_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1.5 inline-block text-primary hover:underline"
-                        >
-                          View pull request
-                        </a>
-                      )}
-                    </div>
-                  )}
+                  <CopilotResultDetails cp38Result={m.cp38Result} cp10Result={m.cp10Result} crResult={m.crResult} />
                 </div>
               </div>
             ))}

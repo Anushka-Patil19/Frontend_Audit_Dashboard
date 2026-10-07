@@ -3,6 +3,7 @@
 # jira_approved + pr_merged + merger_matches through the decision matrix
 # below. No LLM step: identity here is a deterministic mention-vs-login
 # match, same spirit as CP10's sender-email match.
+from app.clients.evidence_screenshot import capture_pull_request_screenshot
 from app.clients.github_client import find_branch, find_pull_requests_for_branch, get_pull_request
 from app.clients.jira_client import extract_required_merger, get_jira_issue
 from app.models import CrComplianceProjectConfig, CrComplianceResult, CrGateStatus, CrOutcomeId, CrVerifyResponse
@@ -156,6 +157,17 @@ async def verify_cr_compliance(ticket_key: str, cfg: CrComplianceProjectConfig) 
         pr_merged_by=merged_by_login,
         merger_matches=merger_matches,
         pr_url=pr.get("html_url") if pr else None,
+        evidence_screenshot=(
+            await capture_pull_request_screenshot(
+                owner=cfg.github_owner,
+                repo=cfg.github_repo,
+                number=pr["number"],
+                pr_url=pr["html_url"],
+                updated_at=pr.get("updated_at") or "",
+            )
+            if pr and pr.get("html_url")
+            else None
+        ),
         timestamp=timestamp,
     )
     return CrVerifyResponse(

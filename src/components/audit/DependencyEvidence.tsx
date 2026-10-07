@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { checkRepoDependencies, getDependencyEvidenceScreenshot } from "@/lib/api-client";
-import { Mono } from "./atoms";
+import { Mono, openImageInNewTab } from "./atoms";
 
 // CP16 evidence — instead of a static PNG, runs a live requirements.txt
 // check against PyPI and shows the screenshot the backend captured of that
@@ -60,13 +60,18 @@ export function DependencyEvidence() {
         )}
         {state === "error" && <p className="text-xs text-fail">{error}</p>}
         {state === "ready" && dataUrl && (
-          <a href={dataUrl} target="_blank" rel="noreferrer">
+          <button
+            type="button"
+            onClick={() => openImageInNewTab(dataUrl)}
+            className="block w-full cursor-zoom-in"
+            title="Open screenshot in a new tab"
+          >
             <img
               src={dataUrl}
               alt="Live dependency version monitoring notification"
               className="max-h-96 w-full rounded border border-border object-contain object-left-top"
             />
-          </a>
+          </button>
         )}
       </div>
     </>

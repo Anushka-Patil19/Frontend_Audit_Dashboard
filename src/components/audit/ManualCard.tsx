@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronRight, FolderClosed, Lock, Check, MessageSquare, Mail } from "lucide-react";
+import { ChevronRight, FolderClosed, Lock, Check, MessageSquare, Mail, Paperclip } from "lucide-react";
 import type { ManualCheckpoint } from "@/lib/audit-data";
 import { statusLabel } from "@/lib/audit-data";
-import { HistoryStrip, Mono } from "./atoms";
+import { useAudit } from "@/lib/audit-store";
+import { EvidenceScreenshot, HistoryStrip, Mono } from "./atoms";
 
 type Props = {
   cp: ManualCheckpoint;
@@ -14,6 +15,7 @@ type Props = {
 export function ManualCard({ cp, onStepDone, onStepUndo, onComment }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const cp38Result = useAudit().cp38Results[cp.id];
   const done = cp.steps.filter((s) => s.state === "done").length;
   const activeIndex = cp.steps.findIndex((s) => s.state === "pending");
   const lastDoneIndex = (activeIndex === -1 ? cp.steps.length : activeIndex) - 1;
@@ -152,6 +154,35 @@ export function ManualCard({ cp, onStepDone, onStepUndo, onComment }: Props) {
               );
             })}
           </ol>
+
+          {cp38Result?.evidence_screenshot && (
+            <div className="border-t border-border pt-3">
+              <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] text-faint">
+                <Paperclip className="h-3 w-3" /> Evidence
+              </p>
+              {cp38Result.outcome_id === "CP38-C" ? (
+                <p className="text-xs text-muted-foreground">
+                  Sign-off email from {cp38Result.approver_actor ?? "the authorized signer"}
+                  {cp38Result.confidence != null && <> · conf. {cp38Result.confidence}%</>} ·{" "}
+                  <Mono className="text-faint">{cp38Result.timestamp}</Mono>
+                </p>
+              ) : (
+                <p className="text-xs text-warn">
+                  Email received but not accepted yet ·{" "}
+                  {cp38Result.pending_reason === "wrong_sender"
+                    ? `sent by ${cp38Result.wrong_sender_email}, not the authorized signer`
+                    : "sign-off wording wasn't explicit enough"}{" "}
+                  · <Mono className="text-faint">{cp38Result.timestamp}</Mono>
+                </p>
+              )}
+              <EvidenceScreenshot
+                fileName={cp38Result.evidence_screenshot}
+                source="cp38"
+                label="View sign-off email screenshot"
+                alt="Screenshot of the UAT sign-off email"
+              />
+            </div>
+          )}
 
           <div className="border-t border-border pt-3">
             <p className="mb-2 inline-flex items-center gap-1.5 text-[11px] text-faint">

@@ -133,6 +133,8 @@ export type CrComplianceResult = {
   pr_merged_by: string | null;
   merger_matches: boolean;
   pr_url: string | null;
+  /** Screenshot of the PR's GitHub page, when it could be captured (public repos). */
+  evidence_screenshot: string | null;
   timestamp: string;
 };
 
@@ -162,6 +164,14 @@ export async function runCrComplianceVerification({
   data: { question: string };
 }): Promise<CrVerifyResponse> {
   return apiFetch("/api/cr-compliance/verify", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getCrEvidenceScreenshot({
+  data,
+}: {
+  data: { fileName: string };
+}): Promise<{ dataUrl: string } | null> {
+  return apiFetchOrNull(`/api/cr-compliance/evidence?file_name=${encodeURIComponent(data.fileName)}`);
 }
 
 // --- Mail connector ----------------------------------------------------
@@ -249,4 +259,35 @@ export function formatDependencyReply(res: DependencyMonitorResult): string {
   }
 
   return lines.join("\n").trimEnd();
+}
+
+// --- Developer invites --------------------------------------------------
+
+export type Invite = {
+  token: string;
+  email: string;
+  projectId: string;
+  projectName: string;
+  role: "developer";
+  invitedBy: string | null;
+  createdAt: string;
+};
+
+export type CreateInviteResponse = {
+  invite: Invite;
+  link: string;
+  emailSent: boolean;
+  emailError: string | null;
+};
+
+export async function createInvite({
+  data,
+}: {
+  data: { email: string; projectId: string; projectName: string; invitedBy?: string };
+}): Promise<CreateInviteResponse> {
+  return apiFetch("/api/invites", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getInvite({ data }: { data: { token: string } }): Promise<Invite | null> {
+  return apiFetchOrNull(`/api/invites/${encodeURIComponent(data.token)}`);
 }

@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { LayoutDashboard, FolderKanban, AlertTriangle, Plug, ScrollText, ShieldHalf, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
+import { useRole } from "@/lib/role-store";
 
 const nav = [
   { to: "/", label: "Home", icon: LayoutDashboard, group: "Overview" },
@@ -10,9 +11,17 @@ const nav = [
   { to: "/activity", label: "Activity", icon: ScrollText, group: "Compliance" },
 ] as const;
 
+// Invited developers only see their Developer home view.
+function useNav() {
+  const { invite } = useRole();
+  return invite ? nav.filter((n) => n.to === "/") : nav;
+}
+
 export function AppSidebar() {
-  const groups = [...new Set(nav.map((n) => n.group))];
+  const items = useNav();
+  const groups = [...new Set(items.map((n) => n.group))];
   const { session, signOut } = useAuth();
+  const { invite, leaveInvite } = useRole();
 
 
   return (
@@ -27,7 +36,7 @@ export function AppSidebar() {
           <div key={g}>
             <p className="px-2 text-[11px] tracking-wide text-sidebar-muted">{g}</p>
             <ul className="mt-2 space-y-1">
-              {nav
+              {items
                 .filter((n) => n.group === g)
                 .map((n) => (
                   <li key={n.to}>
@@ -47,11 +56,13 @@ export function AppSidebar() {
       </nav>
 
       <div className="mt-auto rounded-md bg-sidebar-active/20 px-3 py-3">
-        <p className="text-xs text-sidebar-foreground">{session?.name ?? "Signed out"}</p>
-        <p className="mt-0.5 font-mono text-[11px] text-sidebar-muted">{session?.role}</p>
-        <p className="mt-2 font-mono text-[11px] text-sidebar-muted">ACME-CLT-01 · Acme Capital</p>
+        <p className="truncate text-xs text-sidebar-foreground">{invite ? invite.email : (session?.name ?? "Signed out")}</p>
+        <p className="mt-0.5 font-mono text-[11px] text-sidebar-muted">{invite ? "Developer (invited)" : session?.role}</p>
+        <p className="mt-2 font-mono text-[11px] text-sidebar-muted">
+          {invite ? `${invite.projectName} · Acme Capital` : "ACME-CLT-01 · Acme Capital"}
+        </p>
         <button
-          onClick={signOut}
+          onClick={invite ? leaveInvite : signOut}
           className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-sidebar-foreground hover:underline"
         >
           <LogOut className="h-3 w-3" />
@@ -64,9 +75,10 @@ export function AppSidebar() {
 }
 
 export function MobileNav() {
+  const items = useNav();
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-border bg-panel px-3 py-2 md:hidden">
-      {nav.map((n) => (
+      {items.map((n) => (
         <Link
           key={n.to}
           to={n.to}

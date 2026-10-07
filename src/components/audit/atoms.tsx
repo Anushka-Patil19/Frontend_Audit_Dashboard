@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Github, Mail, FolderClosed, SquareKanban, ImageIcon } from "lucide-react";
 import type { SourceKey, Status } from "@/lib/audit-data";
 import { statusLabel, statusTone } from "@/lib/audit-data";
-import { getCp10EvidenceScreenshot, getCp38EvidenceScreenshot } from "@/lib/api-client";
+import { getCp10EvidenceScreenshot, getCp38EvidenceScreenshot, getCrEvidenceScreenshot } from "@/lib/api-client";
 
 export const tone = {
   ok: { text: "text-ok", bg: "bg-ok", border: "border-l-ok" },
@@ -57,6 +57,17 @@ export function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="font-serif text-lg text-foreground">{children}</h2>;
 }
 
+// Browsers block opening a data: URL in a new tab, so the screenshot is
+// handed over as a blob: URL instead, which opens as a normal image tab.
+export function openImageInNewTab(dataUrl: string) {
+  const [meta = "", b64 = ""] = dataUrl.split(",");
+  const mime = meta.match(/data:([^;]+)/)?.[1] ?? "image/png";
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // Lazily fetched on click rather than eagerly — the screenshot is only ever
 // needed when someone actually wants to inspect the evidence. Shared by CP10
 // (CAB approval, mail + Jira screenshots) and CP38 (UAT sign-off, mail
@@ -69,7 +80,7 @@ export function EvidenceScreenshot({
   alt = "Screenshot of the approved email",
 }: {
   fileName: string;
-  source: "cp10" | "cp38";
+  source: "cp10" | "cp38" | "cr";
   label?: string;
   alt?: string;
 }) {
@@ -78,7 +89,12 @@ export function EvidenceScreenshot({
 
   const load = async () => {
     setState("loading");
-    const getScreenshot = source === "cp10" ? getCp10EvidenceScreenshot : getCp38EvidenceScreenshot;
+    const getScreenshot =
+      source === "cp10"
+        ? getCp10EvidenceScreenshot
+        : source === "cr"
+          ? getCrEvidenceScreenshot
+          : getCp38EvidenceScreenshot;
     const res = await getScreenshot({ data: { fileName } });
     if (!res) {
       setState("error");
@@ -90,13 +106,18 @@ export function EvidenceScreenshot({
 
   if (dataUrl) {
     return (
-      <a href={dataUrl} target="_blank" rel="noreferrer" className="mt-2 block">
+      <button
+        type="button"
+        onClick={() => openImageInNewTab(dataUrl)}
+        className="mt-2 block w-full cursor-zoom-in"
+        title="Open screenshot in a new tab"
+      >
         <img
           src={dataUrl}
           alt={alt}
           className="max-h-64 w-full rounded border border-border object-contain object-left-top"
         />
-      </a>
+      </button>
     );
   }
 

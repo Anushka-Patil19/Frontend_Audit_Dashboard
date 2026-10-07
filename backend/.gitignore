@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 evidence/*.png
 !evidence/.gitkeep
+invites.json
+outlook_session.json*

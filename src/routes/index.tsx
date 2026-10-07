@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Area,
   AreaChart,
@@ -44,18 +44,26 @@ import {
   Calendar,
   Users,
   FolderKanban,
+  Building2,
 } from "lucide-react";
 import {
   complianceTrend,
   modules,
   statusLabel,
-  verificationVolume,
+  getCheckpointProjectId,
+  projectsData,
   type Status,
+  type BusinessUnit,
+  type ProjectId,
 } from "@/lib/audit-data";
 import { useAudit } from "@/lib/audit-store";
 import { moduleStats } from "@/components/audit/ModuleGrid";
 import { Mono, SectionHeading, StatusPill } from "@/components/audit/atoms";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BusinessUnitDrilldown } from "@/components/audit/BusinessUnitDrilldown";
+import { DeveloperDashboard } from "@/components/developer/DeveloperDashboard";
+import { ManagerDashboard } from "@/components/manager/ManagerDashboard";
+import { useRole } from "@/lib/role-store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -75,8 +83,16 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: HomePage,
+  component: HomeRoute,
 });
+
+// CTO = the existing executive dashboard (HomePage, unchanged); Manager / Developer = role views.
+function HomeRoute() {
+  const { role } = useRole();
+  if (role === "developer") return <DeveloperDashboard />;
+  if (role === "manager") return <ManagerDashboard />;
+  return <HomePage />;
+}
 
 const statusColor: Record<string, string> = {
   compliant: "var(--ok)",
@@ -197,9 +213,29 @@ const DOMAIN_MAP: Record<string, { domain: string; icon: React.ElementType }> = 
 };
 
 function HomePage() {
-  const { checkpoints, connectors, feed, countdown } = useAudit();
+  const { checkpoints: rawCheckpoints, connectors, feed, countdown } = useAudit();
   const [selectedDomain, setSelectedDomain] = useState<string>("all");
+  const [selectedBu, setSelectedBu] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsOnboarded(window.localStorage.getItem("pitArmourOnboardingComplete") === "true");
+    }
+  }, []);
+
+  const checkpoints = useMemo(() => {
+    let list = rawCheckpoints;
+    if (!isOnboarded) {
+      list = list.filter((c) => getCheckpointProjectId(c.id) !== "project-a");
+    }
+    if (selectedBu === "all") return list;
+    return list.filter((c) => {
+      const pId = getCheckpointProjectId(c.id);
+      return projectsData[pId]?.businessUnit === selectedBu;
+    });
+  }, [rawCheckpoints, selectedBu, isOnboarded]);
 
   const automated = checkpoints.filter((c) => c.kind === "automated");
   const manual = checkpoints.filter((c) => c.kind === "manual");
@@ -211,9 +247,9 @@ function HomePage() {
   const overall = Math.round(
     (checkpoints.reduce((sum, c) => {
       if (c.kind === "automated") return sum + (c.status === "compliant" ? 1 : 0);
-      return sum + c.steps.filter((s) => s.state === "done").length / c.steps.length;
+      return sum + c.steps.filter((s) => s.state === "done").length / (c.steps.length || 1);
     }, 0) /
-      checkpoints.length) *
+      (checkpoints.length || 1)) *
       100,
   );
 
@@ -302,6 +338,50 @@ function HomePage() {
         title="Home"
         subtitle="Compliance synopsis across every module, worker and manual workflow — Acme Capital"
       />
+
+      {/* Executive Business Unit Filter Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-panel p-3.5 shadow-card">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary-soft text-primary">
+            <Building2 className="h-4 w-4" />
+          </span>
+          <div>
+            <h3 className="text-xs font-semibold text-foreground">Filter Executive View by Business Unit</h3>
+            <p className="text-[11px] text-muted-foreground">Scope compliance trends, findings, and modules by division</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { id: "all", label: "All Business Units", count: rawCheckpoints.length },
+            { id: "Enterprise", label: "Enterprise (PIT Armour)", count: rawCheckpoints.filter((c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "Enterprise").length },
+            { id: "Operation", label: "Operation (SAATHI)", count: rawCheckpoints.filter((c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "Operation").length },
+            { id: "FnA", label: "FnA (MPS)", count: rawCheckpoints.filter((c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "FnA").length },
+          ].map((bu) => {
+            const active = selectedBu === bu.id;
+            return (
+              <button
+                key={bu.id}
+                onClick={() => setSelectedBu(bu.id)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+                  active
+                    ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                    : "border border-border bg-panel text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+              >
+                <span>{bu.label}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-mono ${
+                    active ? "bg-white/20 text-white" : "bg-panel-2 text-faint"
+                  }`}
+                >
+                  {bu.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {/* KPI 1: Overall Compliance */}
@@ -436,21 +516,7 @@ function HomePage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Panel title="Verification volume — passed vs failed">
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={verificationVolume} margin={{ left: -20, right: 8, top: 4 }}>
-                <CartesianGrid stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="month" {...axis} />
-                <YAxis {...axis} />
-                <Tooltip {...tooltipStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="passed" name="Passed" fill="var(--ok)" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="failed" name="Failed" fill="var(--fail)" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
+        <BusinessUnitDrilldown />
 
         <Panel
           title="Open Findings by Owner"
