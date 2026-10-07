@@ -4,6 +4,15 @@
 // the checkpoint logic, which now lives in the Python backend) since this
 // is pure client-side triage with no server-only dependency.
 
+// One sample question per copilot process (CP38, CP10, CR compliance,
+// dependencies) — the chat's suggested prompts and the Simulate run.
+export const COPILOT_SUGGESTIONS = [
+  "What's the status of PIT Armour's UAT sign-off?",
+  "Check CP10 for PIT Armour.",
+  "Can you tell me if ticket CR-POC-4 is compliant?",
+  "Which dependencies need to be upgraded?",
+];
+
 // Jira issue keys are PROJECTKEY-NUMBER. Users naturally write "CR-POC-4" or
 // "CR POC-4" to mean "change request POC-4" — the CR- is describing the
 // ticket type, not part of the real key — so it's stripped when present,

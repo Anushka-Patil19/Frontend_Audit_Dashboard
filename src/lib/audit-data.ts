@@ -6,11 +6,13 @@ export type SourceKey = "github" | "jira" | "mail" | "manual";
 
 export type ProjectId = "project-a" | "project-b" | "project-c";
 export type ProjectName = "PIT Armour" | "SAATHI" | "MPS";
+export type BusinessUnit = "Enterprise" | "Operation" | "FnA";
 
 export interface ProjectInfo {
   id: ProjectId;
   name: ProjectName;
   client: string;
+  businessUnit: BusinessUnit;
   description?: string;
   badgeTone: string;
 }
@@ -20,6 +22,7 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
     id: "project-a",
     name: "PIT Armour",
     client: "ACME-CLT-01 — Acme Capital",
+    businessUnit: "Enterprise",
     description: "Production IT Armour Platform — Core Banking & Financial Systems Governance",
     badgeTone: "bg-primary/10 text-primary border-primary/20",
   },
@@ -27,6 +30,7 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
     id: "project-b",
     name: "SAATHI",
     client: "ACME-CLT-02 — Acme Capital",
+    businessUnit: "Operation",
     description: "SAATHI — Merchant Payment Gateway & Digital Financial Services",
     badgeTone: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20",
   },
@@ -34,6 +38,7 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
     id: "project-c",
     name: "MPS",
     client: "ACME-CLT-03 — Acme Capital",
+    businessUnit: "FnA",
     description: "MPS — Risk Analytics & BI Cloud Data Platform",
     badgeTone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
   },
@@ -92,8 +97,8 @@ export type ManualStep = {
   name: string;
   role: string;
   state: "done" | "pending" | "locked";
-  completedBy?: string;
-  completedAt?: string;
+  completedBy?: string | undefined;
+  completedAt?: string | undefined;
   ownerEmail?: string;
 };
 

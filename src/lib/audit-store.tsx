@@ -13,6 +13,7 @@ import {
   syncMailConnector,
   type Cp10GateStatus,
   type Cp10Result,
+  type Cp38Result,
   type CrGateStatus,
   type CrComplianceResult,
 } from "./api-client";
@@ -44,6 +45,10 @@ type AuditContextValue = {
   crResult: CrComplianceResult | null;
   setCrVerification: (result: CrComplianceResult | null, gates: CrGateStatus) => void;
   undoCrVerification: (ledgerId: string, actor?: string) => void;
+  // Latest CP38 (UAT sign-off) result per ledger checkpoint id — set by the
+  // copilot, read by that checkpoint's ManualCard to show the email evidence.
+  cp38Results: Record<string, Cp38Result>;
+  setCp38Result: (ledgerId: string, result: Cp38Result) => void;
 };
 
 const AuditContext = createContext<AuditContextValue | null>(null);
@@ -58,6 +63,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [cp10Result, setCp10Result] = useState<Cp10Result | null>(null);
   const [crGates, setCrGates] = useState<CrGateStatus>({ jira: "pending", branch: "pending", pr: "pending" });
   const [crResult, setCrResult] = useState<CrComplianceResult | null>(null);
+  const [cp38Results, setCp38Results] = useState<Record<string, Cp38Result>>({});
   useEffect(() => {
     setNow(new Date());
     const t = setInterval(() => {
@@ -202,6 +208,8 @@ export function AuditProvider({ children }: { children: ReactNode }) {
             };
           }),
         );
+        // Undoing a step means the sign-off is no longer accepted, so its evidence goes too.
+        setCp38Results(({ [id]: _removed, ...rest }) => rest);
         const cp = checkpoints.find((c) => c.id === id);
         pushFeed("manual-workflow", `${cp?.ref} step ${index + 1} undone by Priya Rao.`);
       },
@@ -306,9 +314,11 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         setCrResult(null);
         setCrGates({ jira: "pending", branch: "pending", pr: "pending" });
       },
+      cp38Results,
+      setCp38Result: (ledgerId, result) => setCp38Results((r) => ({ ...r, [ledgerId]: result })),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [checkpoints, connectors, feed, clock, dateLabel, countdown, cp10Gates, cp10Result, crGates, crResult],
+    [checkpoints, connectors, feed, clock, dateLabel, countdown, cp10Gates, cp10Result, crGates, crResult, cp38Results],
   );
 
   return <AuditContext.Provider value={value}>{children}</AuditContext.Provider>;
