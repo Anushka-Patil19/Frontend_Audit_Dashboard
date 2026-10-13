@@ -1,5 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { LayoutDashboard, FolderKanban, AlertTriangle, Plug, ScrollText, ShieldHalf, LogOut } from "lucide-react";
+import {
+  LayoutDashboard,
+  FolderKanban,
+  AlertTriangle,
+  Plug,
+  ScrollText,
+  LogOut,
+  Timer,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { useRole } from "@/lib/role-store";
 
@@ -7,14 +15,17 @@ const nav = [
   { to: "/", label: "Home", icon: LayoutDashboard, group: "Overview" },
   { to: "/projects", label: "Projects", icon: FolderKanban, group: "Compliance" },
   { to: "/findings", label: "Findings", icon: AlertTriangle, group: "Compliance" },
+  { to: "/escalations", label: "Escalations", icon: Timer, group: "Compliance" },
   { to: "/connectors", label: "Connectors", icon: Plug, group: "Compliance" },
   { to: "/activity", label: "Activity", icon: ScrollText, group: "Compliance" },
 ] as const;
 
 // Invited developers only see their Developer home view.
 function useNav() {
-  const { invite } = useRole();
-  return invite ? nav.filter((n) => n.to === "/") : nav;
+  const { invite, role } = useRole();
+  if (invite) return nav.filter((n) => n.to === "/");
+  // Developers don't configure deadlines (PRD: Escalations tab permissions).
+  return role === "developer" ? nav.filter((n) => n.to !== "/escalations") : nav;
 }
 
 export function AppSidebar() {
@@ -23,12 +34,23 @@ export function AppSidebar() {
   const { session, signOut } = useAuth();
   const { invite, leaveInvite } = useRole();
 
-
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-sidebar px-4 py-6 md:flex">
-      <div className="flex items-center gap-2 px-2">
-        <ShieldHalf className="h-5 w-5 text-sidebar-foreground" strokeWidth={1.75} />
-        <span className="font-serif text-lg text-sidebar-foreground">Audit Intelligence</span>
+      <div className="flex items-center gap-2.5 px-2">
+        {/* Newel cloud mark, cropped from the full logo (1016×640; cloud at x 275–705, y 0–322). */}
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white">
+          <span className="relative block h-[20px] w-[26px] overflow-hidden">
+            <img
+              src="/newel-logo.png"
+              alt="Newel Technologies logo"
+              className="absolute top-0 max-w-none"
+              style={{ width: 61.4, left: -16.6 }}
+            />
+          </span>
+        </span>
+        <span className="font-serif text-base leading-tight text-sidebar-foreground">
+          Newel Technologies
+        </span>
       </div>
 
       <nav className="mt-8 space-y-6">
@@ -56,10 +78,14 @@ export function AppSidebar() {
       </nav>
 
       <div className="mt-auto rounded-md bg-sidebar-active/20 px-3 py-3">
-        <p className="truncate text-xs text-sidebar-foreground">{invite ? invite.email : (session?.name ?? "Signed out")}</p>
-        <p className="mt-0.5 font-mono text-[11px] text-sidebar-muted">{invite ? "Developer (invited)" : session?.role}</p>
+        <p className="truncate text-xs text-sidebar-foreground">
+          {invite ? invite.email : (session?.name ?? "Signed out")}
+        </p>
+        <p className="mt-0.5 font-mono text-[11px] text-sidebar-muted">
+          {invite ? "Developer (invited)" : session?.role}
+        </p>
         <p className="mt-2 font-mono text-[11px] text-sidebar-muted">
-          {invite ? `${invite.projectName} · Acme Capital` : "ACME-CLT-01 · Acme Capital"}
+          {invite ? `${invite.projectName} · Newel Technologies` : "Newel-TECH-01 · Newel Technologies"}
         </p>
         <button
           onClick={invite ? leaveInvite : signOut}
@@ -69,7 +95,6 @@ export function AppSidebar() {
           Sign out
         </button>
       </div>
-
     </aside>
   );
 }

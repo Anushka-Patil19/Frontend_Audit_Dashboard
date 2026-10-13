@@ -14,13 +14,12 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuditProvider } from "../lib/audit-store";
+import { EscalationProvider } from "../lib/escalation-store";
 import { AuthProvider, useAuth } from "../lib/auth-store";
 import { RoleProvider, useRole } from "../lib/role-store";
 import { SignInScreen } from "../components/layout/SignInScreen";
 import { AppSidebar, MobileNav } from "../components/layout/AppSidebar";
 import { Cp38Copilot } from "../components/audit/Cp38Copilot";
-
-
 
 function NotFoundComponent() {
   return (
@@ -90,7 +89,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Audit Intelligence — Compliance Command Center" },
       {
         name: "description",
-        content: "Continuous-compliance command center for automated and manual audit verification.",
+        content:
+          "Continuous-compliance command center for automated and manual audit verification.",
       },
       { name: "author", content: "Audit Intelligence" },
       { property: "og:type", content: "website" },
@@ -153,17 +153,19 @@ function GatedShell() {
 
   return (
     <AuditProvider>
-      <div className="flex min-h-screen w-full bg-background">
-        <AppSidebar />
-        <div className="min-w-0 flex-1">
-          <MobileNav />
-          <div className="px-5 py-6 lg:px-8 lg:py-8">
-            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-            <Outlet />
+      <EscalationProvider>
+        <div className="flex min-h-screen w-full bg-background">
+          <AppSidebar />
+          <div className="min-w-0 flex-1">
+            <MobileNav />
+            <div className="px-5 py-6 lg:px-8 lg:py-8">
+              {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+              <Outlet />
+            </div>
           </div>
         </div>
-      </div>
-      {!invite && <Cp38Copilot />}
+        {!invite && <Cp38Copilot />}
+      </EscalationProvider>
     </AuditProvider>
   );
 }
@@ -179,5 +181,3 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
-
-

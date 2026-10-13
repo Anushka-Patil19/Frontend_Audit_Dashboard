@@ -5,4 +5,7 @@ __pycache__/
 evidence/*.png
 !evidence/.gitkeep
 invites.json
+escalations.json
 outlook_session.json*
+compliance_mail_log.json
+compliance.json

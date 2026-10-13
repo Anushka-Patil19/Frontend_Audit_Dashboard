@@ -21,7 +21,7 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
   "project-a": {
     id: "project-a",
     name: "PIT Armour",
-    client: "ACME-CLT-01 — Acme Capital",
+    client: "Newel-TECH-01 — Newel Technologies",
     businessUnit: "Enterprise",
     description: "Production IT Armour Platform — Core Banking & Financial Systems Governance",
     badgeTone: "bg-primary/10 text-primary border-primary/20",
@@ -29,7 +29,7 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
   "project-b": {
     id: "project-b",
     name: "SAATHI",
-    client: "ACME-CLT-02 — Acme Capital",
+    client: "ACME-CLT-02 — Newel Technologies",
     businessUnit: "Operation",
     description: "SAATHI — Merchant Payment Gateway & Digital Financial Services",
     badgeTone: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20",
@@ -37,7 +37,7 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
   "project-c": {
     id: "project-c",
     name: "MPS",
-    client: "ACME-CLT-03 — Acme Capital",
+    client: "ACME-CLT-03 — Newel Technologies",
     businessUnit: "FnA",
     description: "MPS — Risk Analytics & BI Cloud Data Platform",
     badgeTone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
@@ -100,7 +100,20 @@ export type ManualStep = {
   completedBy?: string | undefined;
   completedAt?: string | undefined;
   ownerEmail?: string;
+  /** Image uploaded as proof for an "attach documentation" step. */
+  evidence?: StepEvidence | undefined;
 };
+
+export type StepEvidence = {
+  fileName: string;
+  dataUrl: string;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
+/** Steps that attach documentation can only be marked done once an image is uploaded. */
+export const stepRequiresEvidence = (step: Pick<ManualStep, "name">) =>
+  /attach/i.test(step.name);
 
 export type Comment = { author: string; at: string; text: string };
 
@@ -2775,7 +2788,7 @@ export const modules: Module[] = [
     "key": "application-governance",
     "name": "Application Governance",
     "kindTag": "Application Governance",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Application ownership, architecture documentation, SOP governance, CMDB register, and SBOM management.",
     "submodules": [
       "Ownership Matrix",
@@ -2788,7 +2801,7 @@ export const modules: Module[] = [
     "key": "change-management",
     "name": "Change Management",
     "kindTag": "Change Management",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Change requests, CAB approvals, risk classifications, release versioning, PIRs, and rollback plans.",
     "submodules": [
       "JIRA Ticket",
@@ -2801,7 +2814,7 @@ export const modules: Module[] = [
     "key": "source-code",
     "name": "Source Code",
     "kindTag": "Source Code",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "VCS repositories, code ownership, commit traceability to CRs, branching strategy, and peer review approvals.",
     "submodules": [
       "Repository",
@@ -2814,7 +2827,7 @@ export const modules: Module[] = [
     "key": "secure-sdlc",
     "name": "Secure SDLC",
     "kindTag": "Secure SDLC",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "SAST, DAST, SCA dependency scans, vulnerability tracking to closure, secrets scanning, and quality gates.",
     "submodules": [
       "SAST Report",
@@ -2827,7 +2840,7 @@ export const modules: Module[] = [
     "key": "build-and-release",
     "name": "Build & Release",
     "kindTag": "Build & Release",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "CI/CD automated pipelines, versioned artifact repositories, tagged source releases, and deployment logs.",
     "submodules": [
       "Pipeline Logs",
@@ -2840,7 +2853,7 @@ export const modules: Module[] = [
     "key": "testing",
     "name": "Testing",
     "kindTag": "Testing",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Functional test suites, regression test runs, UAT approvals, business sign-offs, and post-deploy smoke tests.",
     "submodules": [
       "Test Report",
@@ -2853,7 +2866,7 @@ export const modules: Module[] = [
     "key": "deployment",
     "name": "Deployment",
     "kindTag": "Deployment",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "CAB deployment tickets, authorized DevOps personnel, approved maintenance windows, and pre-deploy backups.",
     "submodules": [
       "Deployment Ticket",
@@ -2866,7 +2879,7 @@ export const modules: Module[] = [
     "key": "access-control",
     "name": "Access Control",
     "kindTag": "Access Control",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "AD/SSO integration, multi-factor authentication (MFA), password compliance, access matrices, and PAM vaults.",
     "submodules": [
       "Configuration",
@@ -2879,7 +2892,7 @@ export const modules: Module[] = [
     "key": "data-security",
     "name": "Data Security",
     "kindTag": "Data Security",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Production screen masking, test data sanitization, database RBAC enforcement, and encryption controls.",
     "submodules": [
       "Screenshot",
@@ -2892,7 +2905,7 @@ export const modules: Module[] = [
     "key": "patch-management",
     "name": "Patch Management",
     "kindTag": "Patch Management",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Operating system and package patch registers, patch testing, regular VA/PT assessments, and SLA tracking.",
     "submodules": [
       "Patch Register",
@@ -2905,7 +2918,7 @@ export const modules: Module[] = [
     "key": "backup",
     "name": "Backup",
     "kindTag": "Backup",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Automated backup schedules, snapshot retention policies, offsite immutable backups, and periodic restore drills.",
     "submodules": [
       "Backup Policy",
@@ -2918,7 +2931,7 @@ export const modules: Module[] = [
     "key": "disaster-recovery",
     "name": "Disaster Recovery",
     "kindTag": "Disaster Recovery",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Comprehensive DR plan, recovery time objectives (RTO/RPO), and verified recovery testing reports.",
     "submodules": [
       "DR Test Report"
@@ -2928,7 +2941,7 @@ export const modules: Module[] = [
     "key": "logging",
     "name": "Logging",
     "kindTag": "Logging",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Centralized audit trails, authentication logs, administrator activity tracking, and SOC retention policy.",
     "submodules": [
       "Log Configuration",
@@ -2941,7 +2954,7 @@ export const modules: Module[] = [
     "key": "incident-management",
     "name": "Incident Management",
     "kindTag": "Incident Management",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Incident ticketing register, root-cause analyses (RCA), CAPA tracking, and deployment linkage.",
     "submodules": [
       "Incident Register",
@@ -2954,7 +2967,7 @@ export const modules: Module[] = [
     "key": "vendor-management",
     "name": "Vendor Management",
     "kindTag": "Vendor Management",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Third-party vendor security clauses, access authorization reviews, and periodic performance audits.",
     "submodules": [
       "Contract",
@@ -2966,7 +2979,7 @@ export const modules: Module[] = [
     "key": "business-continuity",
     "name": "Business Continuity",
     "kindTag": "Business Continuity",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Business Continuity Plans (BCP), operational resilience documentation, and live crisis simulation drills.",
     "submodules": [
       "BCP Document",
@@ -2978,7 +2991,7 @@ export const modules: Module[] = [
     "key": "compliance",
     "name": "Compliance",
     "kindTag": "Compliance",
-    "client": "ACME-CLT-01 — Acme Capital",
+    "client": "Newel-TECH-01 — Newel Technologies",
     "description": "Enforced Segregation of Duties (SoD), periodic regulatory assessments, and continuous audit finding closure.",
     "submodules": [
       "Role Matrix",

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ControlsRouteImport } from './routes/controls'
+import { Route as EscalationsRouteImport } from './routes/escalations'
 import { Route as FindingsRouteImport } from './routes/findings'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ConnectorsSourceRouteImport } from './routes/connectors.$source'
@@ -36,6 +37,11 @@ const ConnectorsRoute = ConnectorsRouteImport.update({
 const ControlsRoute = ControlsRouteImport.update({
   id: '/controls',
   path: '/controls',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EscalationsRoute = EscalationsRouteImport.update({
+  id: '/escalations',
+  path: '/escalations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FindingsRoute = FindingsRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/activity': typeof ActivityRoute
   '/connectors': typeof ConnectorsRouteWithChildren
   '/controls': typeof ControlsRoute
+  '/escalations': typeof EscalationsRoute
   '/findings': typeof FindingsRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/activity': typeof ActivityRoute
   '/connectors': typeof ConnectorsRouteWithChildren
   '/controls': typeof ControlsRoute
+  '/escalations': typeof EscalationsRoute
   '/findings': typeof FindingsRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/activity': typeof ActivityRoute
   '/connectors': typeof ConnectorsRouteWithChildren
   '/controls': typeof ControlsRoute
+  '/escalations': typeof EscalationsRoute
   '/findings': typeof FindingsRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/connectors'
     | '/controls'
+    | '/escalations'
     | '/findings'
     | '/projects'
     | '/connectors/$source'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/connectors'
     | '/controls'
+    | '/escalations'
     | '/findings'
     | '/projects'
     | '/connectors/$source'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/connectors'
     | '/controls'
+    | '/escalations'
     | '/findings'
     | '/projects'
     | '/connectors/$source'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   ActivityRoute: typeof ActivityRoute
   ConnectorsRoute: typeof ConnectorsRouteWithChildren
   ControlsRoute: typeof ControlsRoute
+  EscalationsRoute: typeof EscalationsRoute
   FindingsRoute: typeof FindingsRoute
   ProjectsRoute: typeof ProjectsRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -161,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/controls'
       fullPath: '/controls'
       preLoaderRoute: typeof ControlsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/escalations': {
+      id: '/escalations'
+      path: '/escalations'
+      fullPath: '/escalations'
+      preLoaderRoute: typeof EscalationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/findings': {
@@ -211,6 +231,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActivityRoute: ActivityRoute,
   ConnectorsRoute: ConnectorsRouteWithChildren,
   ControlsRoute: ControlsRoute,
+  EscalationsRoute: EscalationsRoute,
   FindingsRoute: FindingsRoute,
   ProjectsRoute: ProjectsRoute,
   InviteTokenRoute: InviteTokenRoute,

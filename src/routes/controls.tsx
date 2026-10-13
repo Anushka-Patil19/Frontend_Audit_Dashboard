@@ -137,7 +137,7 @@ function ControlsPage() {
     <div className="mx-auto max-w-[1400px] space-y-7">
       <PageHeader
         title="Controls"
-        subtitle="Live view across automated and manual verification — Acme Capital"
+        subtitle="Live view across automated and manual verification — Newel Technologies"
       />
 
       <Rollup

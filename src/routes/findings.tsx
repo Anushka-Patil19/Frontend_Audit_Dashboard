@@ -255,7 +255,7 @@ function FindingsPage() {
     <div className="mx-auto max-w-[1400px] space-y-7">
       <PageHeader
         title="Open Findings & Gap Register"
-        subtitle="Active non-compliant items, audit review queues, and process remediation ledger — Acme Capital"
+        subtitle="Active non-compliant items, audit review queues, and process remediation ledger — Newel Technologies"
       >
         <div className="flex items-center gap-2">
           {/* COMPACT TOP-OF-DASHBOARD PROJECT DROPDOWN FILTER */}

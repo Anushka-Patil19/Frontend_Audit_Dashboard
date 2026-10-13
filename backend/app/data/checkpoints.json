@@ -1,0 +1,597 @@
+[
+  {
+    "id": "cp-1",
+    "ref": "#1",
+    "name": "Application owner and technical owner are formally assigned",
+    "category": "Application Governance",
+    "ownerRole": "Application Owner"
+  },
+  {
+    "id": "cp-2",
+    "ref": "#2",
+    "name": "Updated Application Architecture document is available",
+    "category": "Application Governance",
+    "ownerRole": "Architect"
+  },
+  {
+    "id": "cp-3",
+    "ref": "#3",
+    "name": "Approved Application/Process SOP is available",
+    "category": "Application Governance",
+    "ownerRole": "Application Owner"
+  },
+  {
+    "id": "cp-4",
+    "ref": "#4",
+    "name": "Application inventory/CMDB is maintained",
+    "category": "Application Governance",
+    "ownerRole": "IT"
+  },
+  {
+    "id": "cp-5",
+    "ref": "#5",
+    "name": "SBOM is available for critical applications or approved exception exists",
+    "category": "Application Governance",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-6",
+    "ref": "#6",
+    "name": "Every change is linked to an approved CR/JIRA",
+    "category": "Change Management",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-7",
+    "ref": "#7",
+    "name": "Business justification is documented",
+    "category": "Change Management",
+    "ownerRole": "Requestor"
+  },
+  {
+    "id": "cp-8",
+    "ref": "#8",
+    "name": "Impact analysis is completed before implementation",
+    "category": "Change Management",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-9",
+    "ref": "#9",
+    "name": "Risk classification is assigned",
+    "category": "Change Management",
+    "ownerRole": "CAB"
+  },
+  {
+    "id": "cp-10",
+    "ref": "#10",
+    "name": "CAB approval is obtained before production deployment",
+    "category": "Change Management",
+    "ownerRole": "CAB"
+  },
+  {
+    "id": "cp-11",
+    "ref": "#11",
+    "name": "Emergency changes follow documented approval process",
+    "category": "Change Management",
+    "ownerRole": "CAB"
+  },
+  {
+    "id": "cp-12",
+    "ref": "#12",
+    "name": "Release/version information is maintained",
+    "category": "Change Management",
+    "ownerRole": "Release Manager"
+  },
+  {
+    "id": "cp-13",
+    "ref": "#13",
+    "name": "Post Implementation Review (PIR) is completed",
+    "category": "Change Management",
+    "ownerRole": "CAB"
+  },
+  {
+    "id": "cp-14",
+    "ref": "#14",
+    "name": "Change is closed only after successful validation",
+    "category": "Change Management",
+    "ownerRole": "CAB"
+  },
+  {
+    "id": "cp-15",
+    "ref": "#15",
+    "name": "Rollback plan is documented before deployment",
+    "category": "Change Management",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-16",
+    "ref": "#16",
+    "name": "Version control system (Git/Azure DevOps) is used",
+    "category": "Source Code",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-17",
+    "ref": "#17",
+    "name": "Source code ownership is defined",
+    "category": "Source Code",
+    "ownerRole": "Application Owner"
+  },
+  {
+    "id": "cp-18",
+    "ref": "#18",
+    "name": "Git commits are traceable to approved CRs",
+    "category": "Source Code",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-19",
+    "ref": "#19",
+    "name": "Branching strategy is followed",
+    "category": "Source Code",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-20",
+    "ref": "#20",
+    "name": "Pull Request is mandatory for changes",
+    "category": "Source Code",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-21",
+    "ref": "#21",
+    "name": "Peer review is completed before merge",
+    "category": "Source Code",
+    "ownerRole": "Reviewer"
+  },
+  {
+    "id": "cp-22",
+    "ref": "#22",
+    "name": "SAST is performed",
+    "category": "Secure SDLC",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-23",
+    "ref": "#23",
+    "name": "DAST is performed before production deployment",
+    "category": "Secure SDLC",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-24",
+    "ref": "#24",
+    "name": "Open-source dependency scan (SCA) is performed",
+    "category": "Secure SDLC",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-25",
+    "ref": "#25",
+    "name": "Security vulnerabilities are tracked to closure",
+    "category": "Secure SDLC",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-26",
+    "ref": "#26",
+    "name": "High/Critical vulnerabilities are resolved before release",
+    "category": "Secure SDLC",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-27",
+    "ref": "#27",
+    "name": "Secrets are not stored in source code",
+    "category": "Secure SDLC",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-28",
+    "ref": "#28",
+    "name": "Secure coding standards are followed",
+    "category": "Secure SDLC",
+    "ownerRole": "Development Lead"
+  },
+  {
+    "id": "cp-29",
+    "ref": "#29",
+    "name": "CI/CD quality gates enforce security validation",
+    "category": "Secure SDLC",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-30",
+    "ref": "#30",
+    "name": "CI/CD pipeline is used for build and deployment",
+    "category": "Build & Release",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-31",
+    "ref": "#31",
+    "name": "Build artifacts are version controlled",
+    "category": "Build & Release",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-32",
+    "ref": "#32",
+    "name": "Deployment package is generated from tagged source",
+    "category": "Build & Release",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-33",
+    "ref": "#33",
+    "name": "Release notes are maintained",
+    "category": "Build & Release",
+    "ownerRole": "Release Manager"
+  },
+  {
+    "id": "cp-34",
+    "ref": "#34",
+    "name": "Deployment communication is shared",
+    "category": "Build & Release",
+    "ownerRole": "Release Manager"
+  },
+  {
+    "id": "cp-35",
+    "ref": "#35",
+    "name": "Functional testing completed",
+    "category": "Testing",
+    "ownerRole": "QA"
+  },
+  {
+    "id": "cp-36",
+    "ref": "#36",
+    "name": "Regression testing completed",
+    "category": "Testing",
+    "ownerRole": "QA"
+  },
+  {
+    "id": "cp-37",
+    "ref": "#37",
+    "name": "UAT completed successfully",
+    "category": "Testing",
+    "ownerRole": "Business/QA"
+  },
+  {
+    "id": "cp-38",
+    "ref": "#38",
+    "name": "UAT Sign-Off: [CR-POC-1] – [JIRA-POC-1][PIT-ARMOUR]",
+    "category": "Testing",
+    "ownerRole": "Business"
+  },
+  {
+    "id": "cp-39",
+    "ref": "#39",
+    "name": "Smoke testing completed after deployment",
+    "category": "Testing",
+    "ownerRole": "QA"
+  },
+  {
+    "id": "cp-40",
+    "ref": "#40",
+    "name": "Production deployment request is approved",
+    "category": "Deployment",
+    "ownerRole": "CAB"
+  },
+  {
+    "id": "cp-41",
+    "ref": "#41",
+    "name": "Deployment performed by authorized personnel",
+    "category": "Deployment",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-42",
+    "ref": "#42",
+    "name": "Deployment executed within approved window",
+    "category": "Deployment",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-43",
+    "ref": "#43",
+    "name": "Backup taken before deployment",
+    "category": "Deployment",
+    "ownerRole": "DBA"
+  },
+  {
+    "id": "cp-44",
+    "ref": "#44",
+    "name": "Rollback procedure validated",
+    "category": "Deployment",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-45",
+    "ref": "#45",
+    "name": "Authentication integrated with AD/SSO where applicable",
+    "category": "Access Control",
+    "ownerRole": "Infra"
+  },
+  {
+    "id": "cp-46",
+    "ref": "#46",
+    "name": "MFA is enabled",
+    "category": "Access Control",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-47",
+    "ref": "#47",
+    "name": "Password policy complies with organizational standards",
+    "category": "Access Control",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-48",
+    "ref": "#48",
+    "name": "Access Control Matrix is maintained",
+    "category": "Access Control",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-49",
+    "ref": "#49",
+    "name": "User access provisioning follows approval workflow",
+    "category": "Access Control",
+    "ownerRole": "Service Desk"
+  },
+  {
+    "id": "cp-50",
+    "ref": "#50",
+    "name": "Periodic user access reviews are performed",
+    "category": "Access Control",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-51",
+    "ref": "#51",
+    "name": "Privileged accounts are managed securely",
+    "category": "Access Control",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-52",
+    "ref": "#52",
+    "name": "Developers do not have unauthorized production write access",
+    "category": "Access Control",
+    "ownerRole": "Infra"
+  },
+  {
+    "id": "cp-53",
+    "ref": "#53",
+    "name": "Sensitive data is masked in application screens",
+    "category": "Data Security",
+    "ownerRole": "Developer"
+  },
+  {
+    "id": "cp-54",
+    "ref": "#54",
+    "name": "Sensitive test data is masked in non-production",
+    "category": "Data Security",
+    "ownerRole": "QA"
+  },
+  {
+    "id": "cp-55",
+    "ref": "#55",
+    "name": "Database RBAC is implemented",
+    "category": "Data Security",
+    "ownerRole": "DBA"
+  },
+  {
+    "id": "cp-56",
+    "ref": "#56",
+    "name": "Encryption is implemented for sensitive data",
+    "category": "Data Security",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-57",
+    "ref": "#57",
+    "name": "Secrets/configuration values are securely managed",
+    "category": "Data Security",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-58",
+    "ref": "#58",
+    "name": "Patch inventory is maintained",
+    "category": "Patch Management",
+    "ownerRole": "Infra"
+  },
+  {
+    "id": "cp-59",
+    "ref": "#59",
+    "name": "Patches are tested before deployment",
+    "category": "Patch Management",
+    "ownerRole": "Infra"
+  },
+  {
+    "id": "cp-60",
+    "ref": "#60",
+    "name": "VA/PT is performed periodically",
+    "category": "Patch Management",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-61",
+    "ref": "#61",
+    "name": "Security findings are remediated within SLA",
+    "category": "Patch Management",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-62",
+    "ref": "#62",
+    "name": "Security exceptions are documented and approved",
+    "category": "Patch Management",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-63",
+    "ref": "#63",
+    "name": "Backup schedule is defined",
+    "category": "Backup",
+    "ownerRole": "DBA"
+  },
+  {
+    "id": "cp-64",
+    "ref": "#64",
+    "name": "Backup retention policy is implemented",
+    "category": "Backup",
+    "ownerRole": "DBA"
+  },
+  {
+    "id": "cp-65",
+    "ref": "#65",
+    "name": "Offsite backup is maintained",
+    "category": "Backup",
+    "ownerRole": "Infra"
+  },
+  {
+    "id": "cp-66",
+    "ref": "#66",
+    "name": "Backup restoration is tested periodically",
+    "category": "Backup",
+    "ownerRole": "DBA"
+  },
+  {
+    "id": "cp-67",
+    "ref": "#67",
+    "name": "DR plan is documented and tested",
+    "category": "Disaster Recovery",
+    "ownerRole": "BCM"
+  },
+  {
+    "id": "cp-68",
+    "ref": "#68",
+    "name": "Audit logging is enabled",
+    "category": "Logging",
+    "ownerRole": "DevOps"
+  },
+  {
+    "id": "cp-69",
+    "ref": "#69",
+    "name": "Successful and failed login attempts are logged",
+    "category": "Logging",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-70",
+    "ref": "#70",
+    "name": "Database administrator/developer access is logged",
+    "category": "Logging",
+    "ownerRole": "DBA"
+  },
+  {
+    "id": "cp-71",
+    "ref": "#71",
+    "name": "Logs are reviewed periodically",
+    "category": "Logging",
+    "ownerRole": "SOC"
+  },
+  {
+    "id": "cp-72",
+    "ref": "#72",
+    "name": "Logs are retained as per policy",
+    "category": "Logging",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-73",
+    "ref": "#73",
+    "name": "Incident register is maintained",
+    "category": "Incident Management",
+    "ownerRole": "Support"
+  },
+  {
+    "id": "cp-74",
+    "ref": "#74",
+    "name": "RCA is documented for major incidents",
+    "category": "Incident Management",
+    "ownerRole": "Support"
+  },
+  {
+    "id": "cp-75",
+    "ref": "#75",
+    "name": "Corrective and preventive actions are tracked",
+    "category": "Incident Management",
+    "ownerRole": "Support"
+  },
+  {
+    "id": "cp-76",
+    "ref": "#76",
+    "name": "Failed deployments are linked to incidents where applicable",
+    "category": "Incident Management",
+    "ownerRole": "Support"
+  },
+  {
+    "id": "cp-77",
+    "ref": "#77",
+    "name": "Security clauses are included in vendor contracts",
+    "category": "Vendor Management",
+    "ownerRole": "Procurement"
+  },
+  {
+    "id": "cp-78",
+    "ref": "#78",
+    "name": "Vendor access is approved and periodically reviewed",
+    "category": "Vendor Management",
+    "ownerRole": "Security"
+  },
+  {
+    "id": "cp-79",
+    "ref": "#79",
+    "name": "Vendor performance/security reviews are conducted",
+    "category": "Vendor Management",
+    "ownerRole": "Vendor Manager"
+  },
+  {
+    "id": "cp-80",
+    "ref": "#80",
+    "name": "Business Continuity Plan (BCP) is available",
+    "category": "Business Continuity",
+    "ownerRole": "BCM"
+  },
+  {
+    "id": "cp-81",
+    "ref": "#81",
+    "name": "Disaster Recovery Plan (DRP) is available",
+    "category": "Business Continuity",
+    "ownerRole": "BCM"
+  },
+  {
+    "id": "cp-82",
+    "ref": "#82",
+    "name": "DR drills are conducted periodically",
+    "category": "Business Continuity",
+    "ownerRole": "BCM"
+  },
+  {
+    "id": "cp-83",
+    "ref": "#83",
+    "name": "Segregation of Duties (Developer != Approver != Deployer) is enforced",
+    "category": "Compliance",
+    "ownerRole": "PMO"
+  },
+  {
+    "id": "cp-84",
+    "ref": "#84",
+    "name": "Compliance with regulatory/security requirements is periodically reviewed",
+    "category": "Compliance",
+    "ownerRole": "Compliance"
+  },
+  {
+    "id": "cp-85",
+    "ref": "#85",
+    "name": "Audit observations are tracked to closure",
+    "category": "Compliance",
+    "ownerRole": "Compliance"
+  }
+]

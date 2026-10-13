@@ -120,8 +120,15 @@ function ProjectsPage() {
   const navigate = useNavigate();
   const activeProjectId = searchParams.project ?? null;
 
-  const { checkpoints, connectors, countdown, resolveCheckpoint, completeStep, undoStep, addComment } =
-    useAudit();
+  const {
+    checkpoints,
+    connectors,
+    countdown,
+    resolveCheckpoint,
+    completeStep,
+    undoStep,
+    addComment,
+  } = useAudit();
 
   const [openModule, setOpenModule] = useState<string | null>(null);
   const [evidenceFilter, setEvidenceFilter] = useState("All");
@@ -168,14 +175,20 @@ function ProjectsPage() {
       {
         id: "project-a",
         name: "PIT Armour",
-        client: "ACME-CLT-01 — Acme Capital",
+        client: "Newel-TECH-01 — Newel Technologies",
         businessUnit: "Enterprise",
-        description: "Production IT Armour Platform — Core Banking & Financial Systems Governance covering Application Governance, Change Management, Secure SDLC, Access Control, and Continuous Verification.",
+        description:
+          "Production IT Armour Platform — Core Banking & Financial Systems Governance covering Application Governance, Change Management, Secure SDLC, Access Control, and Continuous Verification.",
         compliancePct: projectCompliancePct,
         checkpointsCount: checkpoints.length,
         automatedCount: automatedCount,
         manualCount: manualCount,
-        submodules: ["Application Governance", "Change Management", "Secure SDLC", "Access Control"],
+        submodules: [
+          "Application Governance",
+          "Change Management",
+          "Secure SDLC",
+          "Access Control",
+        ],
         status: attentionCount > 0 ? "attention" : "healthy",
         attentionCount,
         isMain: true,
@@ -183,9 +196,10 @@ function ProjectsPage() {
       {
         id: "project-b",
         name: "SAATHI",
-        client: "ACME-CLT-02 — Acme Capital",
+        client: "ACME-CLT-02 — Newel Technologies",
         businessUnit: "Operation",
-        description: "SAATHI — Merchant Payment Gateway & Digital Financial Services: IAM policies, API security controls, and transaction compliance.",
+        description:
+          "SAATHI — Merchant Payment Gateway & Digital Financial Services: IAM policies, API security controls, and transaction compliance.",
         compliancePct: 91,
         checkpointsCount: 12,
         automatedCount: 10,
@@ -196,9 +210,10 @@ function ProjectsPage() {
       {
         id: "project-c",
         name: "MPS",
-        client: "ACME-CLT-03 — Acme Capital",
+        client: "ACME-CLT-03 — Newel Technologies",
         businessUnit: "FnA",
-        description: "MPS — Risk Analytics & BI Cloud Data Platform: Snowflake pipeline compliance, PII masking rules, and access authorization.",
+        description:
+          "MPS — Risk Analytics & BI Cloud Data Platform: Snowflake pipeline compliance, PII masking rules, and access authorization.",
         compliancePct: 82,
         checkpointsCount: 8,
         automatedCount: 6,
@@ -241,7 +256,8 @@ function ProjectsPage() {
     });
   };
 
-  const selectedProjectMeta = projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0] ?? null;
+  const selectedProjectMeta =
+    projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0] ?? null;
 
   const moduleCheckpoints = useMemo(
     () => (openModule ? checkpoints.filter((c) => checkpointModule[c.id] === openModule) : []),
@@ -301,7 +317,7 @@ function ProjectsPage() {
       <div className="mx-auto max-w-[1400px] space-y-7">
         <PageHeader
           title="Projects"
-          subtitle="Compliance environments & audit project ledgers — Acme Capital"
+          subtitle="Compliance environments & audit project ledgers — Newel Technologies"
           titleAction={
             <div className="flex items-center gap-2">
               <button
@@ -381,7 +397,8 @@ function ProjectsPage() {
                 Projects Directory <Mono className="text-faint">({filteredProjects.length})</Mono>
               </SectionHeading>
               <p className="mt-1 text-xs text-muted-foreground">
-                Select a project folder to view its live audit controls, modules, and checkpoint ledger.
+                Select a project folder to view its live audit controls, modules, and checkpoint
+                ledger.
               </p>
             </div>
 
@@ -401,9 +418,21 @@ function ProjectsPage() {
             <span className="text-xs font-medium text-muted-foreground mr-1">Business Unit:</span>
             {[
               { id: "all", label: "All Business Units", count: projectsList.length },
-              { id: "Enterprise", label: "Enterprise", count: projectsList.filter((p) => p.businessUnit === "Enterprise").length },
-              { id: "Operation", label: "Operation", count: projectsList.filter((p) => p.businessUnit === "Operation").length },
-              { id: "FnA", label: "FnA", count: projectsList.filter((p) => p.businessUnit === "FnA").length },
+              {
+                id: "Enterprise",
+                label: "Enterprise",
+                count: projectsList.filter((p) => p.businessUnit === "Enterprise").length,
+              },
+              {
+                id: "Operation",
+                label: "Operation",
+                count: projectsList.filter((p) => p.businessUnit === "Operation").length,
+              },
+              {
+                id: "FnA",
+                label: "FnA",
+                count: projectsList.filter((p) => p.businessUnit === "FnA").length,
+              },
             ].map((bu) => {
               const active = selectedBu === bu.id;
               return (
@@ -485,7 +514,9 @@ function ProjectsPage() {
                       <span className="font-mono text-2xl font-semibold text-foreground">
                         {project.compliancePct}%
                       </span>
-                      <Mono className="text-faint">{project.checkpointsCount} checkpoints verified</Mono>
+                      <Mono className="text-faint">
+                        {project.checkpointsCount} checkpoints verified
+                      </Mono>
                     </div>
                   </div>
 
@@ -537,7 +568,8 @@ function ProjectsPage() {
         </section>
 
         <footer className="border-t border-border pt-5 pb-2 text-xs text-faint">
-          All projects are continuously scanned against organizational compliance baselines and SOC 2 / ISO 27001 policies.
+          All projects are continuously scanned against organizational compliance baselines and SOC
+          2 / ISO 27001 policies.
         </footer>
 
         {reportTargetProject && (
@@ -594,7 +626,7 @@ function ProjectsPage() {
 
         <div className="flex items-center gap-2">
           {/* Runs every copilot question at once — separate from the dependency alerts */}
-          <CopilotSimulate />
+          <CopilotSimulate projectId={(selectedProjectMeta?.id ?? "project-a") as ProjectId} />
           {/* Dependency version alerts (GitHub Dependency Version Monitoring POC) */}
           <DependencyBell />
         </div>
@@ -641,7 +673,8 @@ function ProjectsPage() {
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Open a module to walk its submodules and every automated and manual checkpoint inside it.
+            Open a module to walk its submodules and every automated and manual checkpoint inside
+            it.
           </p>
           <ModuleGrid
             modules={visibleModules}
@@ -723,7 +756,10 @@ function ProjectsPage() {
             {grouped.map(([cat, items]) => {
               const isCollapsed = collapsed[cat];
               return (
-                <div key={cat} className="overflow-hidden rounded-lg border border-border bg-panel shadow-card">
+                <div
+                  key={cat}
+                  className="overflow-hidden rounded-lg border border-border bg-panel shadow-card"
+                >
                   <button
                     onClick={() => setCollapsed((c) => ({ ...c, [cat]: !c[cat] }))}
                     className="flex w-full items-center gap-3 border-b border-border bg-panel-2 px-4 py-2.5 text-left"

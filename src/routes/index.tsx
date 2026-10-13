@@ -64,6 +64,7 @@ import { BusinessUnitDrilldown } from "@/components/audit/BusinessUnitDrilldown"
 import { DeveloperDashboard } from "@/components/developer/DeveloperDashboard";
 import { ManagerDashboard } from "@/components/manager/ManagerDashboard";
 import { useRole } from "@/lib/role-store";
+import { EscalationBell } from "@/components/manager/EscalationPanels";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -114,9 +115,7 @@ function Panel({
   className?: string;
 }) {
   return (
-    <section
-      className={`rounded-xl border border-border bg-panel p-5 shadow-card ${className}`}
-    >
+    <section className={`rounded-xl border border-border bg-panel p-5 shadow-card ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-serif text-base text-foreground">{title}</h2>
         {action}
@@ -266,7 +265,8 @@ function HomePage() {
   const criticalBlockersCount = nonCompliant.length;
   const criticalBlockerSample = nonCompliant[0];
   const passingCheckpointsCount = checkpoints.filter(
-    (c) => c.status === "compliant" || (c.kind === "manual" && c.steps.every((s) => s.state === "done")),
+    (c) =>
+      c.status === "compliant" || (c.kind === "manual" && c.steps.every((s) => s.state === "done")),
   ).length;
 
   // Pending sign-offs by owner name
@@ -284,7 +284,11 @@ function HomePage() {
   const pendingByOwner = useMemo(() => {
     const counts: Record<string, number> = {};
     checkpoints.forEach((c) => {
-      if (c.status === "non-compliant" || c.status === "needs-review" || c.status === "manual-waiting") {
+      if (
+        c.status === "non-compliant" ||
+        c.status === "needs-review" ||
+        c.status === "manual-waiting"
+      ) {
         const ownerName = roleOwnerMap[c.ownerRole] || c.ownerRole;
         counts[ownerName] = (counts[ownerName] || 0) + 1;
       }
@@ -336,7 +340,9 @@ function HomePage() {
     <div className="mx-auto max-w-[1400px] space-y-6">
       <PageHeader
         title="Home"
-        subtitle="Compliance synopsis across every module, worker and manual workflow — Acme Capital"
+        subtitle="Compliance synopsis across every module, worker and manual workflow — Newel Technologies"
+        // CTO: checkpoints escalated past limit + 2 days, and stalled approvals (escalation flow)
+        trailing={<EscalationBell pid="all" role="cto" title="Escalated to you · all projects" />}
       />
 
       {/* Executive Business Unit Filter Toolbar */}
@@ -346,17 +352,39 @@ function HomePage() {
             <Building2 className="h-4 w-4" />
           </span>
           <div>
-            <h3 className="text-xs font-semibold text-foreground">Filter Executive View by Business Unit</h3>
-            <p className="text-[11px] text-muted-foreground">Scope compliance trends, findings, and modules by division</p>
+            <h3 className="text-xs font-semibold text-foreground">
+              Filter Executive View by Business Unit
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              Scope compliance trends, findings, and modules by division
+            </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {[
             { id: "all", label: "All Business Units", count: rawCheckpoints.length },
-            { id: "Enterprise", label: "Enterprise (PIT Armour)", count: rawCheckpoints.filter((c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "Enterprise").length },
-            { id: "Operation", label: "Operation (SAATHI)", count: rawCheckpoints.filter((c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "Operation").length },
-            { id: "FnA", label: "FnA (MPS)", count: rawCheckpoints.filter((c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "FnA").length },
+            {
+              id: "Enterprise",
+              label: "Enterprise (PIT Armour)",
+              count: rawCheckpoints.filter(
+                (c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "Enterprise",
+              ).length,
+            },
+            {
+              id: "Operation",
+              label: "Operation (SAATHI)",
+              count: rawCheckpoints.filter(
+                (c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "Operation",
+              ).length,
+            },
+            {
+              id: "FnA",
+              label: "FnA (MPS)",
+              count: rawCheckpoints.filter(
+                (c) => projectsData[getCheckpointProjectId(c.id)].businessUnit === "FnA",
+              ).length,
+            },
           ].map((bu) => {
             const active = selectedBu === bu.id;
             return (
@@ -526,7 +554,9 @@ function HomePage() {
             </Link>
           }
         >
-          <p className="mb-3 text-[11px] text-muted-foreground">Which team member owns the remediation</p>
+          <p className="mb-3 text-[11px] text-muted-foreground">
+            Which team member owns the remediation
+          </p>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -535,11 +565,7 @@ function HomePage() {
                 margin={{ left: 8, right: 24, top: 4, bottom: 4 }}
               >
                 <CartesianGrid stroke="var(--border)" horizontal={false} />
-                <XAxis
-                  type="number"
-                  {...axis}
-                  allowDecimals={false}
-                />
+                <XAxis type="number" {...axis} allowDecimals={false} />
                 <YAxis
                   type="category"
                   dataKey="owner"
@@ -552,16 +578,22 @@ function HomePage() {
                   formatter={(val: number) => [val, "Open Findings"]}
                   labelFormatter={(label) => `Owner: ${label}`}
                 />
-                <Bar dataKey="count" name="Open Findings" fill="var(--primary)" radius={[0, 4, 4, 0]}>
+                <Bar
+                  dataKey="count"
+                  name="Open Findings"
+                  fill="var(--primary)"
+                  radius={[0, 4, 4, 0]}
+                >
                   {pendingByOwner.map(([owner]) => (
                     <Cell
                       key={owner}
                       fill={
                         owner.toLowerCase().includes("priya")
                           ? "var(--fail)"
-                          : owner.toLowerCase().includes("raj") || owner.toLowerCase().includes("neha")
-                          ? "var(--primary)"
-                          : "var(--manual)"
+                          : owner.toLowerCase().includes("raj") ||
+                              owner.toLowerCase().includes("neha")
+                            ? "var(--primary)"
+                            : "var(--manual)"
                       }
                     />
                   ))}
@@ -587,10 +619,16 @@ function HomePage() {
         >
           <ul className="divide-y divide-border">
             {findings.map((f) => (
-              <li key={f.id} className="group flex flex-wrap items-center gap-3 py-2.5 hover:bg-panel-2/50 px-1 rounded transition-colors">
+              <li
+                key={f.id}
+                className="group flex flex-wrap items-center gap-3 py-2.5 hover:bg-panel-2/50 px-1 rounded transition-colors"
+              >
                 <StatusPill status={f.status} />
                 <Mono className="text-faint">{f.ref}</Mono>
-                <Link to="/findings" className="min-w-0 flex-1 truncate text-sm text-foreground hover:text-primary transition-colors">
+                <Link
+                  to="/findings"
+                  className="min-w-0 flex-1 truncate text-sm text-foreground hover:text-primary transition-colors"
+                >
                   {f.name}
                 </Link>
                 <Mono className="text-muted-foreground">{f.category}</Mono>
@@ -671,10 +709,12 @@ function HomePage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
               <div>
                 <SectionHeading>
-                  Compliance Categories & Modules <Mono className="text-faint">({filteredModules.length})</Mono>
+                  Compliance Categories & Modules{" "}
+                  <Mono className="text-faint">({filteredModules.length})</Mono>
                 </SectionHeading>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Live verification status across software engineering, access controls, operations, and governance.
+                  Live verification status across software engineering, access controls, operations,
+                  and governance.
                 </p>
               </div>
 
@@ -721,8 +761,8 @@ function HomePage() {
                           ? "bg-warn text-white shadow-sm"
                           : "bg-primary text-primary-foreground shadow-sm"
                         : tab.highlight && tab.count > 0
-                        ? "border border-warn/40 bg-warn/10 text-warn hover:bg-warn/20"
-                        : "border border-border bg-panel text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                          ? "border border-warn/40 bg-warn/10 text-warn hover:bg-warn/20"
+                          : "border border-border bg-panel text-muted-foreground hover:border-primary/40 hover:text-foreground"
                     }`}
                   >
                     <span>{tab.label}</span>
@@ -854,10 +894,7 @@ function HomePage() {
                           stats.pct >= 80 ? "bg-ok" : stats.pct >= 60 ? "bg-warn" : "bg-fail";
 
                         return (
-                          <tr
-                            key={m.key}
-                            className="group hover:bg-panel-2/50 transition-colors"
-                          >
+                          <tr key={m.key} className="group hover:bg-panel-2/50 transition-colors">
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2.5">
                                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">

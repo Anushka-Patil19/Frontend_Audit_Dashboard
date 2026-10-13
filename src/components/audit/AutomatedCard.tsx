@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { ChevronRight, FileCode2, CircleCheck, CircleX } from "lucide-react";
 import type { AutomatedCheckpoint, AutoStatus } from "@/lib/audit-data";
-import { statusTone } from "@/lib/audit-data";
+import { getCheckpointProjectId, statusTone } from "@/lib/audit-data";
 import { useAudit } from "@/lib/audit-store";
+import { useEscalations } from "@/lib/escalation-store";
 import { EvidenceScreenshot, HistoryStrip, Mono, SourceBadge, StatusPill, tone } from "./atoms";
+import { EscalationEvidenceScreenshot } from "./EscalationEvidenceScreenshot";
 import { Cp10VerticalProgress } from "./Cp10VerticalProgress";
 import { CrComplianceProgress } from "./CrComplianceProgress";
 import { DependencyEvidence } from "./DependencyEvidence";
@@ -25,10 +27,18 @@ export function AutomatedCard({ cp, onResolve }: Props) {
   const [action, setAction] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const { cp10Gates, cp10Result, undoCp10Gate, crGates, crResult, undoCrVerification } = useAudit();
+  const { items: escalationItems } = useEscalations();
   const t = tone[statusTone[cp.status]];
   const isCp10 = cp.id === "cp-10";
   const isCr = cp.id === "cp-18";
   const isCp16 = cp.id === "cp-16";
+  const approvalEvidence = escalationItems.find(
+    (item) =>
+      item.projectId === (cp.projectId ?? getCheckpointProjectId(cp.id)) &&
+      item.checkpointId === cp.id &&
+      item.status === "compliant" &&
+      item.approval?.evidenceFile,
+  )?.approval;
 
   return (
     <div className={`border-l-2 ${t.border} bg-panel`}>
@@ -51,8 +61,8 @@ export function AutomatedCard({ cp, onResolve }: Props) {
                 cp.projectId === "project-a"
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : cp.projectId === "project-b"
-                  ? "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    ? "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
               }`}
             >
               {cp.projectName}
@@ -86,12 +96,14 @@ export function AutomatedCard({ cp, onResolve }: Props) {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
             {cp.ownerRole && (
               <span className="text-faint">
-                Owner Role: <span className="font-mono font-medium text-foreground">{cp.ownerRole}</span>
+                Owner Role:{" "}
+                <span className="font-mono font-medium text-foreground">{cp.ownerRole}</span>
               </span>
             )}
             {cp.auditEvidence && (
               <span className="text-faint">
-                Audit Evidence: <span className="font-mono font-medium text-primary">{cp.auditEvidence}</span>
+                Audit Evidence:{" "}
+                <span className="font-mono font-medium text-primary">{cp.auditEvidence}</span>
               </span>
             )}
             <span className="text-faint">
@@ -108,7 +120,14 @@ export function AutomatedCard({ cp, onResolve }: Props) {
 
           {evidenceOpen && (
             <div className="border border-border bg-panel-2">
-              {isCp10 && cp10Result?.evidence_screenshot ? (
+              {approvalEvidence?.evidenceFile ? (
+                <div className="px-3 py-3">
+                  <EscalationEvidenceScreenshot
+                    fileName={approvalEvidence.evidenceFile}
+                    alt={`Manager approval evidence for ${approvalEvidence.projectName}, ${approvalEvidence.checkpointRef} ${approvalEvidence.checkpointName}`}
+                  />
+                </div>
+              ) : isCp10 && cp10Result?.evidence_screenshot ? (
                 <>
                   <div className="border-b border-border px-3 py-1.5">
                     <Mono className="text-faint">Approved CAB email — screenshot</Mono>
@@ -146,11 +165,19 @@ export function AutomatedCard({ cp, onResolve }: Props) {
           )}
 
           {isCp10 && (
-            <Cp10VerticalProgress gates={cp10Gates} result={cp10Result} onUndo={() => undoCp10Gate(cp.id)} />
+            <Cp10VerticalProgress
+              gates={cp10Gates}
+              result={cp10Result}
+              onUndo={() => undoCp10Gate(cp.id)}
+            />
           )}
 
           {isCr && (
-            <CrComplianceProgress gates={crGates} result={crResult} onUndo={() => undoCrVerification(cp.id)} />
+            <CrComplianceProgress
+              gates={crGates}
+              result={crResult}
+              onUndo={() => undoCrVerification(cp.id)}
+            />
           )}
 
           <div className="border border-border bg-panel-2 px-3 py-2.5">

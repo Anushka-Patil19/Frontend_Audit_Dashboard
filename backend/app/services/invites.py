@@ -101,6 +101,6 @@ async def create_invite(req: CreateInviteRequest) -> CreateInviteResponse:
     invites[invite.token] = invite.model_dump(by_alias=True)
     _save(invites)
 
-    link = f"{settings.frontend_origin.rstrip('/')}/invite/{invite.token}"
+    link = f"{settings.frontend_origins[0]}/invite/{invite.token}"
     email_error = await _send_invite_email(invite, link)
     return CreateInviteResponse(invite=invite, link=link, email_sent=email_error is None, email_error=email_error)

@@ -168,7 +168,7 @@ function ProjectsPage() {
       {
         id: "project-a",
         name: "PIT Armour",
-        client: "ACME-CLT-01 — Acme Capital",
+        client: "Newel-TECH-01 — Newel Technologies",
         businessUnit: "Enterprise",
         description: "Production IT Armour Platform — Core Banking & Financial Systems Governance covering Application Governance, Change Management, Secure SDLC, Access Control, and Continuous Verification.",
         compliancePct: projectCompliancePct,
@@ -183,7 +183,7 @@ function ProjectsPage() {
       {
         id: "project-b",
         name: "SAATHI",
-        client: "ACME-CLT-02 — Acme Capital",
+        client: "ACME-CLT-02 — Newel Technologies",
         businessUnit: "Operation",
         description: "SAATHI — Merchant Payment Gateway & Digital Financial Services: IAM policies, API security controls, and transaction compliance.",
         compliancePct: 91,
@@ -196,7 +196,7 @@ function ProjectsPage() {
       {
         id: "project-c",
         name: "MPS",
-        client: "ACME-CLT-03 — Acme Capital",
+        client: "ACME-CLT-03 — Newel Technologies",
         businessUnit: "FnA",
         description: "MPS — Risk Analytics & BI Cloud Data Platform: Snowflake pipeline compliance, PII masking rules, and access authorization.",
         compliancePct: 82,
@@ -301,7 +301,7 @@ function ProjectsPage() {
       <div className="mx-auto max-w-[1400px] space-y-7">
         <PageHeader
           title="Projects"
-          subtitle="Compliance environments & audit project ledgers — Acme Capital"
+          subtitle="Compliance environments & audit project ledgers — Newel Technologies"
           titleAction={
             <div className="flex items-center gap-2">
               <button

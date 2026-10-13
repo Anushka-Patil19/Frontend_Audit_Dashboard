@@ -3,6 +3,7 @@
 # a different mailbox search.
 import asyncio
 import html
+import logging
 import os
 import re
 import sys
@@ -17,6 +18,7 @@ from playwright.async_api import async_playwright
 from app.settings import settings
 
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9_-]+\.png$")
+logger = logging.getLogger(__name__)
 
 
 def _evidence_dir() -> Path:
@@ -421,6 +423,41 @@ async def capture_dependency_alerts_screenshot(results: list, checked_at: dateti
         return await _render_and_save(page_html, file_name, selector=".card")
     except Exception as error:
         print(f"CP16 dependency screenshot capture failed: {error}")
+        return None
+
+
+async def capture_escalation_approval_screenshot(project_id: str, item_id: str, record: dict) -> str | None:
+    safe_item_id = re.sub(r"[^A-Za-z0-9_-]", "_", item_id)
+    approved_at = re.sub(r"[^A-Za-z0-9]", "", record["approvedAt"])
+    file_name = f"escalation-approval-{project_id}-{safe_item_id}-{approved_at}.png"
+    fields = (
+        ("Project", record["projectName"]),
+        ("Category", record["checkpointCategory"]),
+        ("Checkpoint", f'{record["checkpointRef"]} {record["checkpointName"]}'),
+        ("Fixed by", f'{record["fixedBy"]} · {record["fixedAt"]}'),
+        ("Overdue at fix", f'{record["overdueDaysAtFix"]} days'),
+        ("Nudges", str(record["nudges"])),
+        ("Approved by", f'{record["approvedBy"]} · {record["approvedAt"]}'),
+    )
+    rows = "".join(
+        f'<div class="row"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>'
+        for label, value in fields
+    )
+    page_html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body {{ margin: 0; padding: 28px; background: #f8fafc; color: #172033; font: 17px Arial, sans-serif; }}
+.record {{ width: 900px; border: 1px solid #6bc7a7; border-radius: 14px; background: white; padding: 28px; }}
+h1 {{ margin: 0 0 20px; color: #087a5b; font-size: 22px; }}
+.status {{ float: right; color: #087a5b; font-size: 15px; }}
+.row {{ display: grid; grid-template-columns: 170px 1fr; gap: 14px; margin: 13px 0; }}
+.row span {{ color: #667085; }} .row strong {{ font-weight: 500; }}
+</style></head><body><main class="record">
+<span class="status">Compliant</span><h1>Approval record · evidence</h1>{rows}
+</main></body></html>"""
+    try:
+        return await _render_and_save(page_html, file_name, selector=".record", width=1060)
+    except Exception:
+        logger.exception("Escalation approval screenshot capture failed for item %s", item_id)
         return None
 
 

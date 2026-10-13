@@ -2,6 +2,16 @@
 // function here has the same name and `{ data: {...} }` call shape the old
 // TanStack Start server functions had, so call sites didn't need to change
 // beyond dropping `useServerFn(...)` and importing from here instead.
+import type { ProjectId } from "@/lib/audit-data";
+import type {
+  Level,
+  Notification,
+  OpenItem,
+  Policy,
+  ProjectConfig,
+  RunSummary,
+} from "@/lib/escalation-data";
+
 const API_BASE_URL = import.meta.env["VITE_API_BASE_URL"] ?? "http://localhost:8000";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -56,7 +66,11 @@ export type Cp38VerifyResponse = {
   reply: string;
 };
 
-export async function runCp38Verification({ data }: { data: { question: string } }): Promise<Cp38VerifyResponse> {
+export async function runCp38Verification({
+  data,
+}: {
+  data: { question: string };
+}): Promise<Cp38VerifyResponse> {
   return apiFetch("/api/cp38/verify", { method: "POST", body: JSON.stringify(data) });
 }
 
@@ -103,7 +117,11 @@ export type Cp10VerifyResponse = {
   gates: Cp10GateStatus;
 };
 
-export async function runCp10Verification({ data }: { data: { question: string } }): Promise<Cp10VerifyResponse> {
+export async function runCp10Verification({
+  data,
+}: {
+  data: { question: string };
+}): Promise<Cp10VerifyResponse> {
   return apiFetch("/api/cp10/verify", { method: "POST", body: JSON.stringify(data) });
 }
 
@@ -171,7 +189,9 @@ export async function getCrEvidenceScreenshot({
 }: {
   data: { fileName: string };
 }): Promise<{ dataUrl: string } | null> {
-  return apiFetchOrNull(`/api/cr-compliance/evidence?file_name=${encodeURIComponent(data.fileName)}`);
+  return apiFetchOrNull(
+    `/api/cr-compliance/evidence?file_name=${encodeURIComponent(data.fileName)}`,
+  );
 }
 
 // --- Mail connector ----------------------------------------------------
@@ -199,16 +219,23 @@ export type DependencyResult = {
 };
 
 export type DependencyMonitorResult =
-  | { ok: true; results: DependencyResult[]; checkedAt: string | null; evidenceScreenshot: string | null }
+  | {
+      ok: true;
+      results: DependencyResult[];
+      checkedAt: string | null;
+      evidenceScreenshot: string | null;
+    }
   | { ok: false; error: string };
 
 // captureEvidence asks the backend to also screenshot this run's results
 // (used by the CP16 evidence panel) — skipped by default since it spins up
 // a headless browser.
-export async function checkRepoDependencies(
-  { captureEvidence = false }: { captureEvidence?: boolean } = {},
-): Promise<DependencyMonitorResult> {
-  return apiFetch(`/api/dependencies/check${captureEvidence ? "?capture_evidence=true" : ""}`, { method: "GET" });
+export async function checkRepoDependencies({
+  captureEvidence = false,
+}: { captureEvidence?: boolean } = {}): Promise<DependencyMonitorResult> {
+  return apiFetch(`/api/dependencies/check${captureEvidence ? "?capture_evidence=true" : ""}`, {
+    method: "GET",
+  });
 }
 
 export async function getDependencyEvidenceScreenshot({
@@ -216,7 +243,9 @@ export async function getDependencyEvidenceScreenshot({
 }: {
   data: { fileName: string };
 }): Promise<{ dataUrl: string } | null> {
-  return apiFetchOrNull(`/api/dependencies/evidence?file_name=${encodeURIComponent(data.fileName)}`);
+  return apiFetchOrNull(
+    `/api/dependencies/evidence?file_name=${encodeURIComponent(data.fileName)}`,
+  );
 }
 
 // Reports packages needing action — either a version update, or a switch
@@ -241,7 +270,8 @@ export function formatDependencyReply(res: DependencyMonitorResult): string {
 
   if (updates.length > 0) {
     lines.push("Need an update:");
-    for (const r of updates) lines.push(`  • ${r.package}: ${r.currentVersion} → ${r.latestVersion}`);
+    for (const r of updates)
+      lines.push(`  • ${r.package}: ${r.currentVersion} → ${r.latestVersion}`);
     lines.push("");
   }
 
@@ -291,3 +321,90 @@ export async function createInvite({
 export async function getInvite({ data }: { data: { token: string } }): Promise<Invite | null> {
   return apiFetchOrNull(`/api/invites/${encodeURIComponent(data.token)}`);
 }
+
+// --- Escalations ---------------------------------------------------------
+
+const ESCALATIONS_API = "/api/escalations";
+
+export type EscalationLimitsPatch = {
+  defaultLimitDays?: number | null;
+  categoryLimits?: Record<string, number | null>;
+  checkpointLimits?: Record<string, number | null>;
+};
+
+export const getEscalationConfig = (projectId: ProjectId) =>
+  apiFetch<ProjectConfig>(`${ESCALATIONS_API}/config/${projectId}`);
+
+export const saveEscalationPolicy = (projectId: ProjectId, policy: Policy) =>
+  apiFetch<ProjectConfig>(`${ESCALATIONS_API}/policy/${projectId}`, {
+    method: "PUT",
+    body: JSON.stringify(policy),
+  });
+
+export const saveEscalationLimits = (projectId: ProjectId, patch: EscalationLimitsPatch) =>
+  apiFetch<ProjectConfig>(`${ESCALATIONS_API}/limits/${projectId}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+
+export const resetEscalationConfig = (projectId: ProjectId) =>
+  apiFetch<ProjectConfig>(`${ESCALATIONS_API}/config/${projectId}`, { method: "DELETE" });
+
+export type EscalationItemAction = {
+  item: OpenItem;
+  notifications: Notification[];
+  emailNote?: string;
+};
+
+export const listEscalationItems = (projectId?: ProjectId) => {
+  const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  return apiFetch<OpenItem[]>(`${ESCALATIONS_API}/items${query}`);
+};
+
+export const runEscalationApi = (projectId: ProjectId) =>
+  apiFetch<RunSummary>(`${ESCALATIONS_API}/run/${projectId}`, { method: "POST" });
+
+export const getLatestEscalationRuns = () =>
+  apiFetch<Partial<Record<ProjectId, RunSummary>>>(`${ESCALATIONS_API}/runs/latest`);
+
+export const listEscalationNotifications = (
+  filters: { role?: Level; projectId?: ProjectId; since?: string } = {},
+) => {
+  const query = new URLSearchParams();
+  if (filters.role) query.set("role", filters.role);
+  if (filters.projectId) query.set("projectId", filters.projectId);
+  if (filters.since) query.set("since", filters.since);
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return apiFetch<Notification[]>(`${ESCALATIONS_API}/notifications${suffix}`);
+};
+
+export const escalationItemAction = (itemId: string, action: "fixed" | "undo" | "nudge") =>
+  apiFetch<EscalationItemAction>(
+    `${ESCALATIONS_API}/items/${encodeURIComponent(itemId)}/${action}`,
+    { method: "POST" },
+  );
+
+export const approveEscalationItem = (itemId: string, by: string) =>
+  apiFetch<EscalationItemAction>(`${ESCALATIONS_API}/items/${encodeURIComponent(itemId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ by }),
+  });
+
+export async function getEscalationEvidenceScreenshot({
+  data,
+}: {
+  data: { fileName: string };
+}): Promise<{ dataUrl: string } | null> {
+  return apiFetchOrNull(
+    `${ESCALATIONS_API}/evidence?file_name=${encodeURIComponent(data.fileName)}`,
+  );
+}
+
+export const rejectEscalationItem = (itemId: string, by: string, reason: string) =>
+  apiFetch<EscalationItemAction>(`${ESCALATIONS_API}/items/${encodeURIComponent(itemId)}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ by, reason }),
+  });
+
+export const resetEscalationDemo = () =>
+  apiFetch<{ ok: boolean }>(`${ESCALATIONS_API}/demo/reset`, { method: "POST" });

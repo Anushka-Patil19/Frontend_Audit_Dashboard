@@ -524,7 +524,7 @@ export function AuditReadiness({ view }: { view: ManagerView }) {
           </button>
         )}
       </Card>
-      <AuditReportModal isOpen={open} onClose={() => setOpen(false)} projectName="PIT Armour" projectClient="Acme Capital · Enterprise BU"
+      <AuditReportModal isOpen={open} onClose={() => setOpen(false)} projectName="PIT Armour" projectClient="Newel Technologies · Enterprise BU"
         compliancePct={view.score} checkpoints={view.pitCheckpoints} />
     </Anchor>
   );

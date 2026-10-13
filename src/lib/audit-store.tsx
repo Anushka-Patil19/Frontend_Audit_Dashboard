@@ -4,10 +4,12 @@ import {
   initialConnectors,
   initialFeed,
   statusLabel,
+  stepRequiresEvidence,
   type AutoStatus,
   type Checkpoint,
   type Connector,
   type FeedEntry,
+  type StepEvidence,
 } from "./audit-data";
 import {
   syncMailConnector,
@@ -31,6 +33,11 @@ type AuditContextValue = {
   undoResolveCheckpoint: (id: string, actor?: string) => void;
   completeStep: (id: string, index: number, actor?: string) => void;
   undoStep: (id: string, index: number) => void;
+  setStepEvidence: (
+    id: string,
+    index: number,
+    evidence: Pick<StepEvidence, "fileName" | "dataUrl"> | null,
+  ) => void;
   addComment: (id: string, text: string) => void;
   syncConnector: (key: string) => void;
   // Live CP10 gate status — shared between the copilot widget and the
@@ -152,6 +159,9 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         setCheckpoints((list) =>
           list.map((cp) => {
             if (cp.id !== id || cp.kind !== "manual") return cp;
+            // An "attach documentation" step can't be completed without uploaded evidence.
+            const step = cp.steps[index];
+            if (step && stepRequiresEvidence(step) && !step.evidence) return cp;
             const steps = cp.steps.map((s, i) => {
               if (i === index)
                 return {
@@ -178,6 +188,8 @@ export function AuditProvider({ children }: { children: ReactNode }) {
           }),
         );
         const cp = checkpoints.find((c) => c.id === id);
+        const step = cp?.kind === "manual" ? cp.steps[index] : undefined;
+        if (step && stepRequiresEvidence(step) && !step.evidence) return;
         pushFeed("manual-workflow", `${cp?.ref} step ${index + 1} marked done by ${actor}.`);
       },
       undoStep: (id, index) => {
@@ -212,6 +224,35 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         setCp38Results(({ [id]: _removed, ...rest }) => rest);
         const cp = checkpoints.find((c) => c.id === id);
         pushFeed("manual-workflow", `${cp?.ref} step ${index + 1} undone by Priya Rao.`);
+      },
+      setStepEvidence: (id, index, evidence) => {
+        setCheckpoints((list) =>
+          list.map((cp) => {
+            if (cp.id !== id || cp.kind !== "manual") return cp;
+            return {
+              ...cp,
+              steps: cp.steps.map((s, i) =>
+                i === index
+                  ? {
+                      ...s,
+                      evidence: evidence
+                        ? { ...evidence, uploadedBy: "Priya Rao", uploadedAt: nowLabel }
+                        : undefined,
+                    }
+                  : s,
+              ),
+              history: [
+                ...cp.history,
+                {
+                  at: nowLabel,
+                  text: evidence
+                    ? `evidence "${evidence.fileName}" attached to step ${index + 1} by Priya Rao`
+                    : `evidence removed from step ${index + 1} by Priya Rao`,
+                },
+              ],
+            };
+          }),
+        );
       },
       addComment: (id, text) => {
         setCheckpoints((list) =>

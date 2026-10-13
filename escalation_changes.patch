@@ -1,0 +1,2743 @@
+--- /dev/null
++++ b/src/lib/escalation-data.ts
+@@ -0,0 +1,187 @@
++import type { ProjectId } from "@/lib/audit-data";
++
++// Checkpoint deadlines, escalation matrix and open items (PRD: Checkpoint Deadlines,
++// Escalation & Approval). Frontend-only for now: escalation-store.tsx keeps this state in
++// localStorage. When the backend lands, the store's actions become API calls; these types
++// mirror the planned records (EscalationPolicy, CheckpointLimit, OpenItem, Notification).
++
++export const DAY_MS = 864e5;
++
++export type Level = "developer" | "manager" | "cto";
++
++export type Person = { name: string; email: string };
++
++export type Policy = {
++  /** Developer gets a reminder this many days before the limit. */
++  reminderBeforeDays: number;
++  /** Manager is notified this many days after the limit (0 = at the limit). */
++  managerAfterDays: number;
++  /** CTO is notified this many days after the limit. */
++  ctoAfterDays: number;
++  /** Manager has this many days to approve a fix before the CTO is notified. */
++  approvalLimitDays: number;
++  people: Record<Level, Person>;
++};
++
++export type ProjectConfig = {
++  /** Project-wide default limit; undefined = org template default. */
++  defaultLimitDays?: number | undefined;
++  categoryLimits: Record<string, number>;
++  checkpointLimits: Record<string, number>;
++  policy: Policy;
++};
++
++export const ORG_DEFAULT_LIMIT_DAYS = 2;
++
++export const DEFAULT_POLICY: Policy = {
++  reminderBeforeDays: 1,
++  managerAfterDays: 0,
++  ctoAfterDays: 2,
++  approvalLimitDays: 2,
++  people: {
++    developer: { name: "Rahul Verma", email: "" },
++    manager: { name: "Neha Gupta", email: "" },
++    cto: { name: "CTO", email: "" },
++  },
++};
++
++const DEFAULT_DEVELOPER: Record<ProjectId, string> = {
++  "project-a": "Rahul Verma",
++  "project-b": "Vivek Pillai",
++  "project-c": "Karan Mehta",
++};
++
++export const emptyConfig = (pid: ProjectId = "project-a"): ProjectConfig => ({
++  categoryLimits: {},
++  checkpointLimits: {},
++  policy: { ...DEFAULT_POLICY, people: { ...DEFAULT_POLICY.people, developer: { name: DEFAULT_DEVELOPER[pid], email: "" } } },
++});
++
++export type ItemStatus = "open" | "pending-approval" | "compliant";
++
++export type HistoryEvent = { at: string; text: string };
++
++export type ApprovalRecord = {
++  checkpointRef: string;
++  checkpointName: string;
++  projectName: string;
++  fixedBy: string;
++  fixedAt: string;
++  overdueDaysAtFix: number;
++  nudges: number;
++  approvedBy: string;
++  approvedAt: string;
++};
++
++export type OpenItem = {
++  id: string;
++  projectId: ProjectId;
++  checkpointId: string;
++  owner: string;
++  openedAt: string; // ISO
++  status: ItemStatus;
++  fixedAt?: string | undefined;
++  fixedBy?: string | undefined;
++  overdueDaysAtFix?: number | undefined;
++  approvedAt?: string | undefined;
++  approvedBy?: string | undefined;
++  rejectReason?: string | undefined;
++  nudges: string[]; // ISO times
++  approval?: ApprovalRecord | undefined;
++  history: HistoryEvent[];
++};
++
++export type NotificationKind = "escalation" | "approval-stalled" | "nudge" | "fixed";
++
++export type Notification = {
++  id: string;
++  runAt: string; // ISO; groups notifications from one Simulate run
++  projectId: ProjectId;
++  itemId: string;
++  recipient: Level;
++  kind: NotificationKind;
++  title: string;
++  detail: string;
++};
++
++export type RunSummary = {
++  runAt: string;
++  projectId: ProjectId;
++  counts: Record<Level, number>;
++  notifications: Notification[];
++  emailNote: string;
++};
++
++// Demo seed, relative to "now" so the demo looks the same on any day.
++// PIT Armour has five items; SAATHI and MPS have two each for the Manager's All projects view.
++type SeedRow = { projectId: ProjectId; checkpointId: string; owner: string; openedDaysAgo: number; fixedDaysAgo?: number };
++export const DEMO_SEED: SeedRow[] = [
++  { projectId: "project-a", checkpointId: "cp-15", owner: "Rahul Verma", openedDaysAgo: 4 },
++  { projectId: "project-a", checkpointId: "cp-21", owner: "Rahul Verma", openedDaysAgo: 4 },
++  { projectId: "project-a", checkpointId: "cp-8", owner: "Rahul Verma", openedDaysAgo: 2 },
++  { projectId: "project-a", checkpointId: "cp-19", owner: "Rahul Verma", openedDaysAgo: 1 },
++  { projectId: "project-a", checkpointId: "cp-6", owner: "Rahul Verma", openedDaysAgo: 6, fixedDaysAgo: 3 },
++  { projectId: "project-b", checkpointId: "cp-25", owner: "Vivek Pillai", openedDaysAgo: 5 },
++  { projectId: "project-b", checkpointId: "cp-60", owner: "Sneha Kapoor", openedDaysAgo: 2 },
++  { projectId: "project-c", checkpointId: "cp-28", owner: "Karan Mehta", openedDaysAgo: 3 },
++  { projectId: "project-c", checkpointId: "cp-71", owner: "Manoj Kumar", openedDaysAgo: 5, fixedDaysAgo: 2 },
++];
++
++export function seedItems(now: number): OpenItem[] {
++  const iso = (daysAgo: number) => new Date(now - daysAgo * DAY_MS).toISOString();
++  return DEMO_SEED.map((s) => {
++    const fixed = s.fixedDaysAgo !== undefined;
++    const history: HistoryEvent[] = [{ at: iso(s.openedDaysAgo), text: "Opened (demo seed)" }];
++    if (fixed) history.push({ at: iso(s.fixedDaysAgo!), text: `Marked fixed by ${s.owner}` });
++    return {
++      id: `esc-${s.checkpointId}`,
++      projectId: s.projectId,
++      checkpointId: s.checkpointId,
++      owner: s.owner,
++      openedAt: iso(s.openedDaysAgo),
++      status: fixed ? "pending-approval" : "open",
++      fixedAt: fixed ? iso(s.fixedDaysAgo!) : undefined,
++      fixedBy: fixed ? s.owner : undefined,
++      overdueDaysAtFix: fixed ? Math.max(0, s.openedDaysAgo - s.fixedDaysAgo! - ORG_DEFAULT_LIMIT_DAYS) : undefined,
++      nudges: [],
++      history,
++    };
++  });
++}
++
++/** Whole days between an ISO time and now. */
++export const daysSince = (iso: string, now: number) => Math.max(0, Math.floor((now - Date.parse(iso)) / DAY_MS));
++
++/** Effective limit: checkpoint override → category → project default → org default. */
++export function resolveLimit(cfg: ProjectConfig, checkpointId: string, category: string): { days: number; source: "checkpoint" | "category" | "project" | "default" } {
++  if (cfg.checkpointLimits[checkpointId] !== undefined) return { days: cfg.checkpointLimits[checkpointId]!, source: "checkpoint" };
++  if (cfg.categoryLimits[category] !== undefined) return { days: cfg.categoryLimits[category]!, source: "category" };
++  if (cfg.defaultLimitDays !== undefined) return { days: cfg.defaultLimitDays, source: "project" };
++  return { days: ORG_DEFAULT_LIMIT_DAYS, source: "default" };
++}
++
++export type ItemAge = {
++  openDays: number;
++  limitDays: number;
++  overdueDays: number; // negative = days left
++  level: Level | null; // highest level due for an open item
++};
++
++export function ageItem(item: OpenItem, cfg: ProjectConfig, category: string, now: number): ItemAge {
++  const openDays = daysSince(item.openedAt, now);
++  const limitDays = resolveLimit(cfg, item.checkpointId, category).days;
++  const overdueDays = openDays - limitDays;
++  const p = cfg.policy;
++  let level: Level | null = null;
++  if (overdueDays >= p.ctoAfterDays) level = "cto";
++  else if (overdueDays >= p.managerAfterDays) level = "manager";
++  else if (-overdueDays <= p.reminderBeforeDays) level = "developer";
++  return { openDays, limitDays, overdueDays, level };
++}
++
++export const ageLabel = (a: ItemAge) =>
++  `Open ${a.openDays} ${a.openDays === 1 ? "day" : "days"} · limit ${a.limitDays} ${a.limitDays === 1 ? "day" : "days"} · ${
++    a.overdueDays > 0 ? `${a.overdueDays} ${a.overdueDays === 1 ? "day" : "days"} overdue` : a.overdueDays === 0 ? "due today" : `${-a.overdueDays} ${-a.overdueDays === 1 ? "day" : "days"} left`
++  }`;
++
++export const LEVEL_LABEL: Record<Level, string> = { developer: "Developer", manager: "Manager", cto: "CTO" };
+--- /dev/null
++++ b/src/lib/escalation-store.tsx
+@@ -0,0 +1,327 @@
++import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
++import { useAudit } from "@/lib/audit-store";
++import { projectsData, type Checkpoint, type ProjectId } from "@/lib/audit-data";
++import {
++  DAY_MS,
++  LEVEL_LABEL,
++  ageItem,
++  ageLabel,
++  daysSince,
++  emptyConfig,
++  seedItems,
++  type ApprovalRecord,
++  type ItemAge,
++  type Level,
++  type Notification,
++  type OpenItem,
++  type Policy,
++  type ProjectConfig,
++  type RunSummary,
++} from "@/lib/escalation-data";
++
++// Frontend-only store for deadlines, escalations, fixes, nudges and approvals.
++// Persisted in localStorage and synced across tabs of the same browser. Each action below
++// maps 1:1 to a planned backend endpoint (see the PRD), so wiring the API later replaces
++// the bodies of these functions, not the screens.
++
++const STORAGE_KEY = "audit-intelligence-escalations-v1";
++
++type Persisted = {
++  configs: Partial<Record<ProjectId, ProjectConfig>>;
++  items: OpenItem[];
++  notifications: Notification[];
++  lastRun: Partial<Record<ProjectId, RunSummary>>;
++};
++
++const fresh = (): Persisted => ({ configs: {}, items: seedItems(Date.now()), notifications: [], lastRun: {} });
++
++export type CheckpointMeta = { ref: string; name: string; category: string; ownerRole: string };
++
++type Ctx = {
++  ready: boolean;
++  items: OpenItem[];
++  notifications: Notification[];
++  lastRun: Partial<Record<ProjectId, RunSummary>>;
++  getConfig: (pid: ProjectId) => ProjectConfig;
++  meta: (checkpointId: string) => CheckpointMeta;
++  ageOf: (item: OpenItem) => ItemAge;
++  // config (PUT /api/escalations/policy|limits/{projectId})
++  setPolicy: (pid: ProjectId, patch: Partial<Policy>) => void;
++  setPerson: (pid: ProjectId, level: Level, patch: Partial<{ name: string; email: string }>) => void;
++  setDefaultLimit: (pid: ProjectId, days: number | undefined) => void;
++  setCategoryLimit: (pid: ProjectId, category: string, days: number | undefined) => void;
++  setCheckpointLimit: (pid: ProjectId, checkpointId: string, days: number | undefined) => void;
++  resetProject: (pid: ProjectId) => void;
++  // run (POST /api/escalations/run/{projectId})
++  runEscalation: (pid: ProjectId) => RunSummary;
++  // item actions (POST /api/items/{id}/fixed|nudge|approve|reject)
++  markFixed: (itemId: string) => void;
++  withdrawFix: (itemId: string) => void;
++  canNudge: (item: OpenItem) => boolean;
++  nudge: (itemId: string) => void;
++  approve: (itemId: string, by: string) => void;
++  reject: (itemId: string, by: string, reason: string) => void;
++  // demo (POST /api/demo/seed/{projectId})
++  resetDemo: () => void;
++};
++
++const EscalationContext = createContext<Ctx | null>(null);
++
++const nid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
++const nowIso = () => new Date().toISOString();
++
++export function EscalationProvider({ children }: { children: ReactNode }) {
++  const { checkpoints, resolveCheckpoint } = useAudit();
++  const [state, setState] = useState<Persisted>({ configs: {}, items: [], notifications: [], lastRun: {} });
++  const [ready, setReady] = useState(false);
++  const skipSave = useRef(true);
++
++  // Load once on the client (avoids SSR/localStorage mismatch), and follow other tabs.
++  useEffect(() => {
++    const load = () => {
++      try {
++        const raw = window.localStorage.getItem(STORAGE_KEY);
++        if (!raw) return fresh();
++        const saved = JSON.parse(raw) as Persisted;
++        // Data saved before SAATHI / MPS were seeded: add their demo items.
++        const have = new Set(saved.items.map((i) => i.id));
++        const missing = seedItems(Date.now()).filter((i) => !have.has(i.id));
++        return missing.length ? { ...saved, items: [...saved.items, ...missing] } : saved;
++      } catch {
++        return fresh();
++      }
++    };
++    skipSave.current = false;
++    setState(load());
++    setReady(true);
++    const onStorage = (e: StorageEvent) => {
++      if (e.key !== STORAGE_KEY || !e.newValue) return;
++      try {
++        skipSave.current = true;
++        setState(JSON.parse(e.newValue) as Persisted);
++      } catch {
++        /* ignore malformed */
++      }
++    };
++    window.addEventListener("storage", onStorage);
++    return () => window.removeEventListener("storage", onStorage);
++  }, []);
++
++  useEffect(() => {
++    if (!ready) return;
++    if (skipSave.current) {
++      skipSave.current = false;
++      return;
++    }
++    try {
++      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
++    } catch {
++      /* storage blocked: state still works for this session */
++    }
++  }, [state, ready]);
++
++  const byId = useMemo(() => new Map(checkpoints.map((c) => [c.id, c] as [string, Checkpoint])), [checkpoints]);
++  const meta = useCallback(
++    (id: string): CheckpointMeta => {
++      const c = byId.get(id);
++      return { ref: c?.ref ?? id, name: c?.name ?? id, category: c?.category ?? "", ownerRole: c?.ownerRole ?? "" };
++    },
++    [byId],
++  );
++  const getConfig = useCallback((pid: ProjectId) => state.configs[pid] ?? emptyConfig(pid), [state.configs]);
++  const ageOf = useCallback(
++    (item: OpenItem) => ageItem(item, getConfig(item.projectId), meta(item.checkpointId).category, Date.now()),
++    [getConfig, meta],
++  );
++
++  const updateConfig = (pid: ProjectId, fn: (c: ProjectConfig) => ProjectConfig) =>
++    setState((s) => ({ ...s, configs: { ...s.configs, [pid]: fn(s.configs[pid] ?? emptyConfig(pid)) } }));
++
++  const updateItem = (itemId: string, fn: (i: OpenItem) => OpenItem, notes: Notification[] = []) =>
++    setState((s) => ({
++      ...s,
++      items: s.items.map((i) => (i.id === itemId ? fn(i) : i)),
++      notifications: [...notes, ...s.notifications].slice(0, 300),
++    }));
++
++  const label = (i: OpenItem) => {
++    const m = meta(i.checkpointId);
++    return `${m.ref} ${m.name}`;
++  };
++
++  const runEscalation = (pid: ProjectId): RunSummary => {
++    const now = Date.now();
++    const runAt = new Date(now).toISOString();
++    const cfg = getConfig(pid);
++    const notes: Notification[] = [];
++    const historyAdds = new Map<string, string>();
++    const push = (item: OpenItem, recipient: Level, kind: Notification["kind"], detail: string) =>
++      notes.push({ id: nid(), runAt, projectId: pid, itemId: item.id, recipient, kind, title: label(item), detail });
++
++    for (const item of state.items.filter((i) => i.projectId === pid)) {
++      if (item.status === "open") {
++        const a = ageItem(item, cfg, meta(item.checkpointId).category, now);
++        if (!a.level) continue;
++        const d = ageLabel(a);
++        push(item, "developer", "escalation", d);
++        if (a.level === "manager" || a.level === "cto") push(item, "manager", "escalation", `${d} · owner ${item.owner}`);
++        if (a.level === "cto") push(item, "cto", "escalation", `${d} · owner ${item.owner} · Manager ${cfg.policy.people.manager.name}`);
++        historyAdds.set(item.id, a.level === "developer" ? "Reminder sent to the developer (Simulate run)" : `Escalated to ${LEVEL_LABEL[a.level]} (Simulate run)`);
++      } else if (item.status === "pending-approval" && item.fixedAt) {
++        const waiting = daysSince(item.fixedAt, now);
++        if (waiting >= cfg.policy.approvalLimitDays) {
++          push(item, "cto", "approval-stalled", `Fix waiting ${waiting} days for ${cfg.policy.people.manager.name}'s approval (limit ${cfg.policy.approvalLimitDays} days)`);
++          historyAdds.set(item.id, `Approval stalled ${waiting} days, CTO notified (Simulate run)`);
++        }
++      }
++    }
++
++    const counts: Record<Level, number> = { developer: 0, manager: 0, cto: 0 };
++    notes.forEach((n) => (counts[n.recipient] += 1));
++    const anyEmail = Object.values(cfg.policy.people).some((p) => p.email.trim());
++    const summary: RunSummary = {
++      runAt,
++      projectId: pid,
++      counts,
++      notifications: notes,
++      emailNote: anyEmail
++        ? "Email not sent: the mail service is not connected to this dashboard yet. Notifications are on each dashboard."
++        : "Email off: no recipient emails set in the Escalations tab. Notifications are on each dashboard.",
++    };
++    setState((s) => ({
++      ...s,
++      items: s.items.map((i) => (historyAdds.has(i.id) ? { ...i, history: [...i.history, { at: runAt, text: historyAdds.get(i.id)! }] } : i)),
++      notifications: [...notes, ...s.notifications].slice(0, 300),
++      lastRun: { ...s.lastRun, [pid]: summary },
++    }));
++    return summary;
++  };
++
++  const markFixed = (itemId: string) => {
++    const item = state.items.find((i) => i.id === itemId);
++    if (!item || item.status !== "open") return;
++    const at = nowIso();
++    const a = ageOf(item);
++    const mgr = getConfig(item.projectId).policy.people.manager.name;
++    updateItem(
++      itemId,
++      (i) => ({ ...i, status: "pending-approval", fixedAt: at, fixedBy: i.owner, overdueDaysAtFix: Math.max(0, a.overdueDays), rejectReason: undefined, nudges: [], history: [...i.history, { at, text: `Marked fixed by ${i.owner}, waiting for ${mgr}` }] }),
++      [{ id: nid(), runAt: at, projectId: item.projectId, itemId, recipient: "manager", kind: "fixed", title: label(item), detail: `${item.owner} marked this fixed and needs your approval` }],
++    );
++  };
++
++  // Developer takes a fix back before the Manager decides: item returns to Overdue & escalated
++  // with its original opened date (unlike Reject, the clock does not restart).
++  const withdrawFix = (itemId: string) => {
++    const item = state.items.find((i) => i.id === itemId);
++    if (!item || item.status !== "pending-approval") return;
++    const at = nowIso();
++    updateItem(itemId, (i) => ({ ...i, status: "open", fixedAt: undefined, fixedBy: undefined, overdueDaysAtFix: undefined, nudges: [], history: [...i.history, { at, text: `Fix withdrawn by ${i.owner}` }] }));
++  };
++
++  const canNudge = (item: OpenItem) => {
++    const last = item.nudges.at(-1);
++    return !last || Date.now() - Date.parse(last) >= DAY_MS;
++  };
++
++  const nudge = (itemId: string) => {
++    const item = state.items.find((i) => i.id === itemId);
++    if (!item || item.status !== "pending-approval" || !canNudge(item)) return;
++    const at = nowIso();
++    updateItem(
++      itemId,
++      (i) => ({ ...i, nudges: [...i.nudges, at], history: [...i.history, { at, text: `${i.owner} nudged the Manager` }] }),
++      [{ id: nid(), runAt: at, projectId: item.projectId, itemId, recipient: "manager", kind: "nudge", title: label(item), detail: `${item.owner} is waiting on your approval (nudge ${item.nudges.length + 1})` }],
++    );
++  };
++
++  const approve = (itemId: string, by: string) => {
++    const item = state.items.find((i) => i.id === itemId);
++    if (!item || item.status !== "pending-approval") return;
++    const at = nowIso();
++    const m = meta(item.checkpointId);
++    const record: ApprovalRecord = {
++      checkpointRef: m.ref,
++      checkpointName: m.name,
++      projectName: projectsData[item.projectId]?.name ?? item.projectId,
++      fixedBy: item.fixedBy ?? item.owner,
++      fixedAt: item.fixedAt ?? at,
++      overdueDaysAtFix: item.overdueDaysAtFix ?? 0,
++      nudges: item.nudges.length,
++      approvedBy: by,
++      approvedAt: at,
++    };
++    updateItem(itemId, (i) => ({ ...i, status: "compliant", approvedAt: at, approvedBy: by, approval: record, history: [...i.history, { at, text: `Approved by ${by}, now compliant` }] }), [
++      { id: nid(), runAt: at, projectId: item.projectId, itemId, recipient: "developer", kind: "fixed", title: label(item), detail: `${by} approved your fix. It is now compliant.` },
++    ]);
++    resolveCheckpoint(item.checkpointId, "compliant", "Approved", `Fix approved by ${by} (escalation flow)`, by);
++  };
++
++  const reject = (itemId: string, by: string, reason: string) => {
++    const item = state.items.find((i) => i.id === itemId);
++    if (!item || item.status !== "pending-approval") return;
++    const at = nowIso();
++    updateItem(
++      itemId,
++      (i) => ({ ...i, status: "open", openedAt: at, fixedAt: undefined, fixedBy: undefined, nudges: [], rejectReason: reason, history: [...i.history, { at, text: `Rejected by ${by}: ${reason}. Clock restarted` }] }),
++      [{ id: nid(), runAt: at, projectId: item.projectId, itemId, recipient: "developer", kind: "escalation", title: label(item), detail: `${by} rejected your fix: ${reason}` }],
++    );
++  };
++
++  const value: Ctx = {
++    ready,
++    items: state.items,
++    notifications: state.notifications,
++    lastRun: state.lastRun,
++    getConfig,
++    meta,
++    ageOf,
++    setPolicy: (pid, patch) => updateConfig(pid, (c) => ({ ...c, policy: { ...c.policy, ...patch } })),
++    setPerson: (pid, level, patch) =>
++      updateConfig(pid, (c) => ({ ...c, policy: { ...c.policy, people: { ...c.policy.people, [level]: { ...c.policy.people[level], ...patch } } } })),
++    setDefaultLimit: (pid, days) => updateConfig(pid, (c) => ({ ...c, defaultLimitDays: days })),
++    setCategoryLimit: (pid, category, days) =>
++      updateConfig(pid, (c) => {
++        const next = { ...c.categoryLimits };
++        if (days === undefined) delete next[category];
++        else next[category] = days;
++        return { ...c, categoryLimits: next };
++      }),
++    setCheckpointLimit: (pid, checkpointId, days) =>
++      updateConfig(pid, (c) => {
++        const next = { ...c.checkpointLimits };
++        if (days === undefined) delete next[checkpointId];
++        else next[checkpointId] = days;
++        return { ...c, checkpointLimits: next };
++      }),
++    resetProject: (pid) =>
++      setState((s) => {
++        const configs = { ...s.configs };
++        delete configs[pid];
++        return { ...s, configs };
++      }),
++    runEscalation,
++    markFixed,
++    withdrawFix,
++    canNudge,
++    nudge,
++    approve,
++    reject,
++    resetDemo: () => setState(fresh()),
++  };
++
++  return <EscalationContext.Provider value={value}>{children}</EscalationContext.Provider>;
++}
++
++export function useEscalations() {
++  const ctx = useContext(EscalationContext);
++  if (!ctx) throw new Error("useEscalations must be used inside EscalationProvider");
++  return ctx;
++}
++
++/** Notifications for one role from the latest Simulate run plus anything newer (fixes, nudges, decisions). */
++export function useRoleNotifications(role: Level, pid: ProjectId = "project-a") {
++  const { notifications, lastRun } = useEscalations();
++  const since = lastRun[pid]?.runAt;
++  return notifications.filter((n) => n.projectId === pid && n.recipient === role && (!since || n.runAt >= since));
++}
+--- /dev/null
++++ b/src/routes/escalations.tsx
+@@ -0,0 +1,383 @@
++import { useEffect, useMemo, useRef, useState } from "react";
++import { Link, createFileRoute } from "@tanstack/react-router";
++import { ArrowLeft, CheckCircle2, ChevronDown, Folder, RotateCcw, Save, Search, Timer, Users } from "lucide-react";
++import { PageHeader } from "@/components/layout/PageHeader";
++import { Mono } from "@/components/audit/atoms";
++import { useAudit } from "@/lib/audit-store";
++import { useRole } from "@/lib/role-store";
++import { categories, projectsData, type ProjectId } from "@/lib/audit-data";
++import { useEscalations } from "@/lib/escalation-store";
++import { ORG_DEFAULT_LIMIT_DAYS, resolveLimit, type Level, type Policy, type ProjectConfig } from "@/lib/escalation-data";
++
++export const Route = createFileRoute("/escalations")({
++  validateSearch: (search: Record<string, unknown>): { project?: ProjectId } =>
++    typeof search["project"] === "string" && search["project"] in projectsData ? { project: search["project"] as ProjectId } : {},
++  head: () => ({ meta: [{ title: "Escalations — Audit Intelligence" }] }),
++  component: EscalationsPage,
++});
++
++const customCount = (c: ProjectConfig | undefined) =>
++  c ? Object.keys(c.categoryLimits).length + Object.keys(c.checkpointLimits).length + (c.defaultLimitDays !== undefined ? 1 : 0) : 0;
++
++function EscalationsPage() {
++  const { project } = Route.useSearch();
++  return (
++    <div className="mx-auto max-w-[1400px] space-y-6">
++      <PageHeader
++        title="Escalations"
++        subtitle="How long each checkpoint may stay open, and who is notified when it runs late"
++      />
++      {project ? <ProjectSettings pid={project} /> : <ProjectFolders />}
++    </div>
++  );
++}
++
++/* ───────────────────────── Project folders ───────────────────────── */
++
++function ProjectFolders() {
++  const { items, getConfig, ageOf, ready } = useEscalations();
++  return (
++    <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
++      <h2 className="font-serif text-base text-foreground">Projects</h2>
++      <p className="mt-1 text-xs text-muted-foreground">Each project inherits the default template (2 days per checkpoint) and stores only what differs.</p>
++      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
++        {(Object.keys(projectsData) as ProjectId[]).map((pid) => {
++          const p = projectsData[pid];
++          const n = customCount(getConfig(pid));
++          const open = items.filter((i) => i.projectId === pid && i.status !== "compliant");
++          const overdue = open.filter((i) => i.status === "open" && ageOf(i).overdueDays > 0).length;
++          return (
++            <Link
++              key={pid}
++              to="/escalations"
++              search={{ project: pid }}
++              className="group rounded-lg border border-border p-4 transition-colors hover:border-primary/50 hover:bg-panel-2/50"
++            >
++              <div className="flex items-center gap-2">
++                <Folder className="h-4 w-4 text-primary" strokeWidth={1.75} />
++                <span className="text-sm font-medium text-foreground">{p.name}</span>
++                <span className="ml-auto rounded-full bg-panel-2 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">BU: {p.businessUnit}</span>
++              </div>
++              <div className="mt-3 flex flex-wrap gap-1.5">
++                <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${n ? "bg-primary-soft text-primary" : "bg-panel-2 text-muted-foreground"}`}>
++                  {n ? `${n} custom ${n === 1 ? "limit" : "limits"}` : "Default template"}
++                </span>
++                {ready && open.length > 0 && (
++                  <span className="rounded-full bg-warn/10 px-2 py-0.5 font-mono text-[10px] text-warn">{open.length} open items</span>
++                )}
++                {ready && overdue > 0 && (
++                  <span className="rounded-full bg-fail/10 px-2 py-0.5 font-mono text-[10px] text-fail">{overdue} overdue</span>
++                )}
++              </div>
++              <p className="mt-3 text-[11px] text-primary opacity-70 group-hover:opacity-100">Open settings →</p>
++            </Link>
++          );
++        })}
++      </div>
++    </section>
++  );
++}
++
++/* ───────────────────────── Project settings ───────────────────────── */
++
++function DaysInput({ id, value, placeholder, onChange, disabled, label }: {
++  id: string; value: number | undefined; placeholder: number; onChange: (v: number | undefined) => void; disabled: boolean; label: string;
++}) {
++  return (
++    <span className="inline-flex items-center gap-1.5">
++      <input
++        id={id}
++        type="number"
++        min={0}
++        max={60}
++        inputMode="numeric"
++        aria-label={label}
++        disabled={disabled}
++        value={value ?? ""}
++        placeholder={String(placeholder)}
++        onChange={(e) => {
++          const raw = e.target.value.trim();
++          if (raw === "") return onChange(undefined);
++          const n = Math.max(0, Math.min(60, Math.round(Number(raw))));
++          if (!Number.isNaN(n)) onChange(n);
++        }}
++        className="h-7 w-14 rounded-md border border-border bg-panel px-2 text-right font-mono text-xs text-foreground placeholder:text-faint disabled:opacity-60"
++      />
++      <span className="text-[11px] text-muted-foreground">days</span>
++    </span>
++  );
++}
++
++function SourceChip({ custom, onReset, disabled }: { custom: boolean; onReset: () => void; disabled: boolean }) {
++  return custom ? (
++    <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 font-mono text-[10px] text-primary">
++      custom
++      {!disabled && (
++        <button type="button" onClick={onReset} aria-label="Reset to default" className="hover:text-foreground">
++          <RotateCcw className="h-3 w-3" />
++        </button>
++      )}
++    </span>
++  ) : (
++    <span className="rounded-full bg-panel-2 px-2 py-0.5 font-mono text-[10px] text-faint">default</span>
++  );
++}
++
++function ProjectSettings({ pid }: { pid: ProjectId }) {
++  const esc = useEscalations();
++  const { checkpoints } = useAudit();
++  const { role } = useRole();
++  // Managers can fill the matrix and people; only checkpoint limits stay CTO / admin.
++  const readOnly = role === "manager";
++  const matrixReadOnly = false;
++  const cfg = esc.getConfig(pid);
++  // Matrix + people are edited as a draft and saved with the Save button.
++  const savedPolicy = cfg.policy;
++  const savedKey = JSON.stringify(savedPolicy);
++  const [draft, setDraft] = useState<Policy>(savedPolicy);
++  const dirty = JSON.stringify(draft) !== savedKey;
++  const dirtyRef = useRef(dirty);
++  dirtyRef.current = dirty;
++  useEffect(() => {
++    // follow outside changes (another tab, reset to template) unless there are unsaved edits
++    if (!dirtyRef.current) setDraft(JSON.parse(savedKey) as Policy);
++  }, [savedKey]);
++  const p = draft;
++  const [query, setQuery] = useState("");
++  const [open, setOpen] = useState<Record<string, boolean>>({});
++  const [saved, setSaved] = useState(0);
++
++  useEffect(() => {
++    if (!saved) return;
++    const t = window.setTimeout(() => setSaved(0), 1800);
++    return () => window.clearTimeout(t);
++  }, [saved]);
++  const touch = () => setSaved(Date.now());
++
++  const projectDefault = cfg.defaultLimitDays ?? ORG_DEFAULT_LIMIT_DAYS;
++  const q = query.trim().toLowerCase();
++  const groups = useMemo(
++    () =>
++      categories
++        .map((cat) => ({
++          cat,
++          rows: checkpoints.filter((c) => c.category === cat && (!q || `${c.ref} ${c.name}`.toLowerCase().includes(q))),
++          total: checkpoints.filter((c) => c.category === cat).length,
++        }))
++        .filter((g) => g.rows.length > 0),
++    [checkpoints, q],
++  );
++
++  const people: { level: Level; role: string }[] = [
++    { level: "developer", role: "Developer (checkpoint owner)" },
++    { level: "manager", role: "Manager" },
++    { level: "cto", role: "CTO" },
++  ];
++
++  return (
++    <div className="space-y-6">
++      <div className="flex flex-wrap items-center gap-3">
++        <Link to="/escalations" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
++          <ArrowLeft className="h-3.5 w-3.5" /> All projects
++        </Link>
++        <span className="text-xs text-faint">/</span>
++        <span className="text-sm font-medium text-foreground">{projectsData[pid].name}</span>
++        <span className="text-xs text-muted-foreground">· Deadlines &amp; escalation</span>
++        <span className="ml-auto flex items-center gap-3">
++          {saved > 0 && (
++            <span className="inline-flex items-center gap-1 text-xs text-ok">
++              <CheckCircle2 className="h-3.5 w-3.5" /> Saved
++            </span>
++          )}
++          {!readOnly && (
++            <button
++              type="button"
++              onClick={() => {
++                esc.resetProject(pid);
++                touch();
++              }}
++              className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-panel-2"
++            >
++              <RotateCcw className="h-3.5 w-3.5" /> Reset to default template
++            </button>
++          )}
++        </span>
++      </div>
++
++      {readOnly && (
++        <p className="rounded-lg border border-border bg-panel-2/50 px-4 py-2.5 text-xs text-muted-foreground">
++          You can edit the escalation matrix and people. Checkpoint limits are view only: the CTO or a compliance admin sets them.
++        </p>
++      )}
++
++      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_2fr]">
++        {/* Escalation matrix */}
++        <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
++          <div className="flex items-center gap-2">
++            <span className="grid h-7 w-7 place-items-center rounded-md bg-primary-soft">
++              <Timer className="h-3.5 w-3.5 text-primary" strokeWidth={1.75} />
++            </span>
++            <h2 className="font-serif text-base text-foreground">Escalation matrix</h2>
++          </div>
++          <p className="mt-1 text-xs text-muted-foreground">Who is notified, and when. Days count from each checkpoint's own limit.</p>
++          <div className="mt-4 overflow-x-auto">
++            <table className="w-full min-w-[520px] text-xs">
++              <thead>
++                <tr className="text-left font-mono text-[10px] uppercase tracking-wide text-faint">
++                  <th className="pb-2 font-normal">Stage</th>
++                  <th className="pb-2 font-normal">Notify</th>
++                  <th className="pb-2 font-normal">When</th>
++                </tr>
++              </thead>
++              <tbody className="divide-y divide-border">
++                <tr>
++                  <td rowSpan={3} className="py-2.5 pr-3 align-top text-sm text-foreground">Fixing the issue<br /><span className="text-[11px] text-muted-foreground">Developer has the checkpoint's limit</span></td>
++                  <td className="py-2.5 text-foreground">{p.people.developer.name} · reminder</td>
++                  <td className="py-2.5"><DaysInput id="m-reminder" label="Reminder days before the limit" disabled={matrixReadOnly} value={p.reminderBeforeDays} placeholder={1} onChange={(v) => setDraft((d) => ({ ...d, reminderBeforeDays: v ?? 1 }))} /> <span className="text-[11px] text-muted-foreground">before the limit</span></td>
++                </tr>
++                <tr>
++                  <td className="py-2.5 text-foreground">{p.people.manager.name} · Manager</td>
++                  <td className="py-2.5"><DaysInput id="m-manager" label="Manager days after the limit" disabled={matrixReadOnly} value={p.managerAfterDays} placeholder={0} onChange={(v) => setDraft((d) => ({ ...d, managerAfterDays: v ?? 0 }))} /> <span className="text-[11px] text-muted-foreground">after the limit (0 = at it)</span></td>
++                </tr>
++                <tr>
++                  <td className="py-2.5 text-foreground">{p.people.cto.name === "CTO" ? "CTO" : `${p.people.cto.name} · CTO`}</td>
++                  <td className="py-2.5"><DaysInput id="m-cto" label="CTO days after the limit" disabled={matrixReadOnly} value={p.ctoAfterDays} placeholder={2} onChange={(v) => setDraft((d) => ({ ...d, ctoAfterDays: v ?? 2 }))} /> <span className="text-[11px] text-muted-foreground">after the limit</span></td>
++                </tr>
++                <tr>
++                  <td className="py-2.5 pr-3 text-sm text-foreground">Approving the fix<br /><span className="text-[11px] text-muted-foreground">Manager decides</span></td>
++                  <td className="py-2.5 text-foreground">{p.people.cto.name === "CTO" ? "CTO" : `${p.people.cto.name} · CTO`}</td>
++                  <td className="py-2.5"><DaysInput id="m-approval" label="Approval limit in days" disabled={matrixReadOnly} value={p.approvalLimitDays} placeholder={2} onChange={(v) => setDraft((d) => ({ ...d, approvalLimitDays: v ?? 2 }))} /> <span className="text-[11px] text-muted-foreground">after the fix, if not approved</span></td>
++                </tr>
++              </tbody>
++            </table>
++          </div>
++        </section>
++
++        {/* People */}
++        <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
++          <div className="flex items-center gap-2">
++            <span className="grid h-7 w-7 place-items-center rounded-md bg-primary-soft">
++              <Users className="h-3.5 w-3.5 text-primary" strokeWidth={1.75} />
++            </span>
++            <h2 className="font-serif text-base text-foreground">People</h2>
++          </div>
++          <p className="mt-1 text-xs text-muted-foreground">Notifications always show on their dashboards. Email is added once addresses are set.</p>
++          <div className="mt-4 space-y-3">
++            {people.map(({ level, role: r }) => (
++              <div key={level} className="grid grid-cols-1 gap-1.5 sm:grid-cols-[110px_1fr_1fr] sm:items-center">
++                <span className="text-xs text-muted-foreground">{r}</span>
++                <input
++                  id={`person-${level}-name`}
++                  aria-label={`${r} name`}
++                  disabled={matrixReadOnly}
++                  value={p.people[level].name}
++                  onChange={(e) => setDraft((d) => ({ ...d, people: { ...d.people, [level]: { ...d.people[level], name: e.target.value } } }))}
++                  className="h-8 rounded-md border border-border bg-panel px-2 text-xs text-foreground disabled:opacity-60"
++                />
++                <input
++                  id={`person-${level}-email`}
++                  type="email"
++                  aria-label={`${r} email`}
++                  placeholder="email (optional)"
++                  disabled={matrixReadOnly}
++                  value={p.people[level].email}
++                  onChange={(e) => setDraft((d) => ({ ...d, people: { ...d.people, [level]: { ...d.people[level], email: e.target.value } } }))}
++                  className="h-8 rounded-md border border-border bg-panel px-2 text-xs text-foreground placeholder:text-faint disabled:opacity-60"
++                />
++              </div>
++            ))}
++          </div>
++        </section>
++      </div>
++
++      {/* Save bar for the matrix + people draft */}
++      <div className={`flex flex-wrap items-center justify-end gap-3 rounded-lg border px-4 py-2.5 ${dirty ? "border-warn/40 bg-warn/5" : "border-border bg-panel"}`}>
++        <span className="mr-auto text-xs text-muted-foreground">
++          {dirty ? "You have unsaved changes to the escalation matrix or people." : "Escalation matrix and people are saved."}
++        </span>
++        <button
++          type="button"
++          disabled={!dirty}
++          onClick={() => setDraft(JSON.parse(savedKey) as Policy)}
++          className="h-8 rounded-md border border-border px-3 text-xs text-foreground hover:bg-panel-2 disabled:opacity-50"
++        >
++          Discard
++        </button>
++        <button
++          type="button"
++          disabled={!dirty}
++          onClick={() => {
++            esc.setPolicy(pid, draft);
++            touch();
++          }}
++          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
++        >
++          <Save className="h-3.5 w-3.5" /> Save changes
++        </button>
++      </div>
++
++      {/* Checkpoint limits */}
++      <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
++        <div className="flex flex-wrap items-center gap-3">
++          <h2 className="font-serif text-base text-foreground">How long each checkpoint may stay open</h2>
++          <span className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1">
++            <span className="text-xs text-muted-foreground">Project default</span>
++            <DaysInput id="project-default" label="Project default limit" disabled={readOnly} value={cfg.defaultLimitDays} placeholder={ORG_DEFAULT_LIMIT_DAYS} onChange={(v) => { esc.setDefaultLimit(pid, v); touch(); }} />
++          </span>
++          <label className="relative ml-auto">
++            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
++            <input
++              id="limit-search"
++              value={query}
++              onChange={(e) => setQuery(e.target.value)}
++              placeholder="Search checkpoints"
++              className="h-8 w-56 rounded-md border border-border bg-panel pl-7 pr-2 text-xs text-foreground placeholder:text-faint"
++            />
++          </label>
++        </div>
++        <p className="mt-1 text-xs text-muted-foreground">Set a limit for a whole category, then override single checkpoints if needed. Blank = inherited (shown in grey).</p>
++
++        <ul className="mt-4 space-y-2">
++          {groups.map(({ cat, rows, total }) => {
++            const isOpen = !!q || !!open[cat];
++            const catLimit = cfg.categoryLimits[cat];
++            const overrides = rows.filter((c) => cfg.checkpointLimits[c.id] !== undefined).length;
++            return (
++              <li key={cat} className={`rounded-lg border ${isOpen ? "border-primary/30" : "border-border"}`}>
++                <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
++                  <button type="button" onClick={() => setOpen((o) => ({ ...o, [cat]: !o[cat] }))} aria-expanded={isOpen} className="flex min-w-[200px] flex-1 items-center gap-2 text-left">
++                    <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
++                    <Folder className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={1.75} />
++                    <span className="text-sm text-foreground">{cat}</span>
++                    <Mono className="text-faint">{q ? `${rows.length} of ${total}` : `${total} checkpoints`}</Mono>
++                    {overrides > 0 && <span className="rounded-full bg-primary-soft px-2 py-0.5 font-mono text-[10px] text-primary">{overrides} overridden</span>}
++                  </button>
++                  <DaysInput id={`cat-${cat}`} label={`${cat} limit`} disabled={readOnly} value={catLimit} placeholder={projectDefault} onChange={(v) => { esc.setCategoryLimit(pid, cat, v); touch(); }} />
++                  <SourceChip custom={catLimit !== undefined} disabled={readOnly} onReset={() => { esc.setCategoryLimit(pid, cat, undefined); touch(); }} />
++                </div>
++                {isOpen && (
++                  <ul className="divide-y divide-border border-t border-border">
++                    {rows.map((c) => {
++                      const own = cfg.checkpointLimits[c.id];
++                      const inherited = resolveLimit({ ...cfg, checkpointLimits: {} }, c.id, cat).days;
++                      return (
++                        <li key={c.id} className="flex flex-wrap items-center gap-3 px-3 py-2 pl-12">
++                          <Mono className="w-10 text-faint">{c.ref}</Mono>
++                          <span className="min-w-[200px] flex-1 text-xs text-foreground">{c.name}</span>
++                          <span className="w-28 text-[11px] text-muted-foreground">{c.ownerRole}</span>
++                          <DaysInput id={`cp-${c.id}`} label={`${c.ref} limit`} disabled={readOnly} value={own} placeholder={inherited} onChange={(v) => { esc.setCheckpointLimit(pid, c.id, v); touch(); }} />
++                          <SourceChip custom={own !== undefined} disabled={readOnly} onReset={() => { esc.setCheckpointLimit(pid, c.id, undefined); touch(); }} />
++                        </li>
++                      );
++                    })}
++                  </ul>
++                )}
++              </li>
++            );
++          })}
++          {groups.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">No checkpoint matches “{query}”.</li>}
++        </ul>
++      </section>
++    </div>
++  );
++}
+--- /dev/null
++++ b/src/components/developer/EscalatedWork.tsx
+@@ -0,0 +1,119 @@
++import { useMemo } from "react";
++import { AlarmClock, CheckCircle2, Info, RotateCcw } from "lucide-react";
++import { Mono } from "@/components/audit/atoms";
++import { Card, Empty } from "@/components/developer/DevSections";
++import { useEscalations } from "@/lib/escalation-store";
++import { ageLabel, daysSince, type Level } from "@/lib/escalation-data";
++import type { ProjectId } from "@/lib/audit-data";
++import type { DevAction } from "@/lib/developer-data";
++
++const LEVEL_BADGE: Record<Level, { text: string; cls: string }> = {
++  cto: { text: "Escalated to CTO", cls: "bg-fail/10 text-fail" },
++  manager: { text: "Escalated to Manager", cls: "bg-warn/10 text-warn" },
++  developer: { text: "Due soon", cls: "bg-primary-soft text-primary" },
++};
++
++/** Escalation items as developer actions, so the bell, KPIs and Waiting on others include them. */
++export function useEscalationActions(pid: ProjectId): DevAction[] {
++  const { items, meta, ageOf, getConfig, ready } = useEscalations();
++  return useMemo(() => {
++    if (!ready) return [];
++    const manager = getConfig(pid).policy.people.manager.name;
++    const out: DevAction[] = [];
++    for (const i of items.filter((x) => x.projectId === pid)) {
++      const m = meta(i.checkpointId);
++      if (i.status === "open") {
++        const a = ageOf(i);
++        if (!a.level) continue;
++        out.push({
++          id: i.id, source: "escalation", severity: a.overdueDays > 0 ? "blocking" : "due",
++          title: `${m.ref} ${m.name}`, process: `${m.ref} ${m.category}`, change: "Escalation",
++          hint: ageLabel(a),
++        });
++      } else if (i.status === "pending-approval" && i.fixedAt) {
++        const d = daysSince(i.fixedAt, Date.now());
++        out.push({
++          id: i.id, source: "escalation", severity: "waiting",
++          title: `${m.ref} ${m.name}: waiting for approval`, process: `${m.ref} ${m.category}`, change: m.ref,
++          hint: "Marked fixed; waiting for the Manager to approve.",
++          who: `${manager} · Manager`, since: `${d} ${d === 1 ? "day" : "days"}`,
++        });
++      }
++    }
++    return out;
++  }, [items, meta, ageOf, getConfig, pid, ready]);
++}
++
++export function EscalatedWork({ pid, onLog }: { pid: ProjectId; onLog: (t: string) => void }) {
++  const { items, meta, ageOf, markFixed, getConfig, ready, resetDemo } = useEscalations();
++  const manager = getConfig(pid).policy.people.manager.name;
++  const open = items
++    .filter((i) => i.projectId === pid && i.status === "open")
++    .map((i) => ({ i, a: ageOf(i), m: meta(i.checkpointId) }))
++    .sort((x, y) => y.a.overdueDays - x.a.overdueDays);
++  const overdue = open.filter((x) => x.a.overdueDays > 0).length;
++
++  return (
++    <div id="dev-escalated" className="scroll-mt-6">
++      <Card
++        title="Overdue & escalated"
++        icon={AlarmClock}
++        note={`Checkpoints you own that are open past, or close to, their limit. Fixed sends them to ${manager} for approval.`}
++        right={
++          <span className="flex items-center gap-2">
++            <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${overdue ? "bg-fail/10 text-fail" : "bg-panel-2 text-muted-foreground"}`}>{overdue} overdue · {open.length} open</span>
++            <button
++              type="button"
++              onClick={() => {
++                resetDemo();
++                onLog("You reset the demo items");
++              }}
++              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
++              title="Reload the demo items: undo all fixes, approvals and notifications"
++            >
++              <RotateCcw className="h-3 w-3" /> Reset demo
++            </button>
++          </span>
++        }
++      >
++        {!ready ? null : open.length === 0 ? (
++          <Empty text="Nothing open. Every escalated checkpoint is fixed." />
++        ) : (
++          <ul className="space-y-2">
++            {open.map(({ i, a, m }) => {
++              const badge = a.level ? LEVEL_BADGE[a.level] : null;
++              return (
++                <li key={i.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2.5 hover:border-primary/30">
++                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: a.overdueDays > 0 ? "var(--fail)" : a.level ? "var(--warn)" : "var(--faint)" }} />
++                  <div className="min-w-[220px] flex-1">
++                    <div className="flex flex-wrap items-center gap-2">
++                      <Mono className="text-faint">{m.ref}</Mono>
++                      <p className="text-sm text-foreground">{m.name}</p>
++                      {badge && <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${badge.cls}`}>{badge.text}</span>}
++                    </div>
++                    <p className={`mt-0.5 font-mono text-[11px] ${a.overdueDays > 0 ? "text-fail" : "text-muted-foreground"}`}>{ageLabel(a)}</p>
++                    {i.rejectReason && (
++                      <p className="mt-1 flex items-start gap-1 text-xs text-warn">
++                        <Info className="mt-0.5 h-3 w-3 shrink-0" /> Rejected: {i.rejectReason}
++                      </p>
++                    )}
++                  </div>
++                  <button
++                    type="button"
++                    onClick={() => {
++                      markFixed(i.id);
++                      onLog(`You marked ${m.ref} fixed; sent to ${manager} for approval`);
++                    }}
++                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
++                  >
++                    <CheckCircle2 className="h-3.5 w-3.5" /> Fixed
++                  </button>
++                </li>
++              );
++            })}
++          </ul>
++        )}
++      </Card>
++    </div>
++  );
++}
+--- /dev/null
++++ b/src/components/manager/EscalationPanels.tsx
+@@ -0,0 +1,223 @@
++import { useState } from "react";
++import { Link } from "@tanstack/react-router";
++import { BellRing, Check, CheckCircle2, ChevronDown, ClipboardCheck, FileCheck2, Send, X } from "lucide-react";
++import { Mono } from "@/components/audit/atoms";
++import { Card, Empty } from "@/components/developer/DevSections";
++import { useEscalations, useRoleNotifications } from "@/lib/escalation-store";
++import { daysSince, type ApprovalRecord, type Level } from "@/lib/escalation-data";
++import { projectsData, type ProjectId } from "@/lib/audit-data";
++
++export type Scope = ProjectId | "all";
++const inScope = (scope: Scope, pid: ProjectId) => scope === "all" || scope === pid;
++const ProjectTag = ({ pid }: { pid: ProjectId }) => (
++  <span className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{projectsData[pid].name}</span>
++);
++import type { Decision } from "@/lib/manager-data";
++
++export const ago = (iso: string) => {
++  const ms = Date.now() - Date.parse(iso);
++  const m = Math.round(ms / 6e4);
++  if (m < 1) return "just now";
++  if (m < 60) return `${m} min ago`;
++  const h = Math.round(m / 60);
++  if (h < 24) return `${h} h ago`;
++  const d = Math.round(h / 24);
++  return `${d} ${d === 1 ? "day" : "days"} ago`;
++};
++
++/** Pending fixes as Decisions, so the Manager's bell and KPI count them. */
++export function useFixDecisions(pid: Scope): Decision[] {
++  const { items, meta, ready } = useEscalations();
++  if (!ready) return [];
++  return items
++    .filter((i) => inScope(pid, i.projectId) && i.status === "pending-approval")
++    .map((i) => {
++      const m = meta(i.checkpointId);
++      return {
++        id: i.id,
++        type: "escalation",
++        process: `${m.ref} ${m.category}`,
++        title: `Approve fix: ${pid === "all" ? `${projectsData[i.projectId].name} · ` : ""}${m.ref} ${m.name}`,
++        requester: `${i.fixedBy ?? i.owner} · Developer`,
++        why: "Marked fixed and waiting for your approval.",
++        risk: i.fixedAt && daysSince(i.fixedAt, Date.now()) >= 2 ? "High" : "Medium",
++        evidence: "Approval record is captured when you approve",
++      } satisfies Decision;
++    });
++}
++
++export function ApprovalRecordCard({ r }: { r: ApprovalRecord }) {
++  const t = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
++  return (
++    <div className="rounded-lg border border-ok/40 bg-panel p-3 text-xs">
++      <div className="flex items-center gap-1.5">
++        <FileCheck2 className="h-4 w-4 text-ok" />
++        <p className="font-semibold text-foreground">Approval record · evidence</p>
++        <span className="ml-auto rounded-full bg-ok/10 px-2 py-0.5 font-mono text-[10px] text-ok">Compliant</span>
++      </div>
++      <dl className="mt-2 grid grid-cols-[110px_1fr] gap-x-2 gap-y-1">
++        <dt className="text-faint">Checkpoint</dt><dd className="text-foreground">{r.checkpointRef} {r.checkpointName}</dd>
++        <dt className="text-faint">Project</dt><dd className="text-foreground">{r.projectName}</dd>
++        <dt className="text-faint">Fixed by</dt><dd className="text-foreground">{r.fixedBy} · {t(r.fixedAt)}</dd>
++        <dt className="text-faint">Overdue at fix</dt><dd className="text-foreground">{r.overdueDaysAtFix} {r.overdueDaysAtFix === 1 ? "day" : "days"}</dd>
++        <dt className="text-faint">Nudges</dt><dd className="text-foreground">{r.nudges}</dd>
++        <dt className="text-faint">Approved by</dt><dd className="text-foreground">{r.approvedBy} · {t(r.approvedAt)}</dd>
++      </dl>
++      <p className="mt-2 text-[11px] text-faint">The screenshot agent saves this record as a PNG once the backend is connected.</p>
++    </div>
++  );
++}
++
++/* ───────────────────────── Fixes waiting for approval ───────────────────────── */
++
++export function FixApprovals({ pid, managerName, onLog }: { pid: Scope; managerName: string; onLog: (t: string) => void }) {
++  const { items, meta, approve, reject, getConfig, ready } = useEscalations();
++  const [rejecting, setRejecting] = useState<string | null>(null);
++  const [reason, setReason] = useState("");
++  const [openRecord, setOpenRecord] = useState<string | null>(null);
++  const pending = items.filter((i) => inScope(pid, i.projectId) && i.status === "pending-approval");
++  const approved = items.filter((i) => inScope(pid, i.projectId) && i.status === "compliant" && i.approval);
++
++  return (
++    <div id="mgr-fixes" className="scroll-mt-6 rounded-xl transition-shadow">
++      <Card
++        title="Fixes waiting for your approval"
++        icon={ClipboardCheck}
++        note={`A developer marked these fixed. Approve to make them compliant, or reject with a reason. Approve within the project's approval limit (2 days by default) or the CTO is notified.`}
++        right={<span className="rounded-full bg-primary-soft px-2 py-0.5 font-mono text-[10px] text-primary">{pending.length} pending</span>}
++      >
++        {!ready ? null : pending.length === 0 ? (
++          <Empty text="No fixes waiting for you." />
++        ) : (
++          <ul className="space-y-2">
++            {pending.map((i) => {
++              const m = meta(i.checkpointId);
++              const waiting = i.fixedAt ? daysSince(i.fixedAt, Date.now()) : 0;
++              const late = waiting >= getConfig(i.projectId).policy.approvalLimitDays;
++              const lastNudge = i.nudges.at(-1);
++              return (
++                <li key={i.id} className={`rounded-lg border p-3 ${late ? "border-fail/40" : "border-border"}`}>
++                  <div className="flex flex-wrap items-center gap-2">
++                    {pid === "all" && <ProjectTag pid={i.projectId} />}
++                    <Mono className="text-faint">{m.ref}</Mono>
++                    <p className="text-sm text-foreground">{m.name}</p>
++                    {i.nudges.length > 0 && lastNudge && (
++                      <span className="inline-flex items-center gap-1 rounded-full bg-warn/10 px-2 py-0.5 font-mono text-[10px] text-warn">
++                        <Send className="h-3 w-3" /> Nudged ×{i.nudges.length} · last {ago(lastNudge)}
++                      </span>
++                    )}
++                    {late && <span className="rounded-full bg-fail/10 px-2 py-0.5 font-mono text-[10px] text-fail">approval late · CTO alerted on next run</span>}
++                  </div>
++                  <p className="mt-1 text-xs text-muted-foreground">
++                    Fixed by <span className="text-foreground">{i.fixedBy ?? i.owner}</span> {i.fixedAt ? ago(i.fixedAt) : ""} · was {i.overdueDaysAtFix ?? 0} {(i.overdueDaysAtFix ?? 0) === 1 ? "day" : "days"} overdue · waiting {waiting} {waiting === 1 ? "day" : "days"}
++                  </p>
++                  {rejecting === i.id ? (
++                    <form
++                      className="mt-2 flex flex-wrap gap-2"
++                      onSubmit={(e) => {
++                        e.preventDefault();
++                        if (!reason.trim()) return;
++                        reject(i.id, managerName, reason.trim());
++                        onLog(`rejected the fix for ${m.ref}: ${reason.trim()}`);
++                        setRejecting(null);
++                        setReason("");
++                      }}
++                    >
++                      <input id={`reject-${i.id}`} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for rejecting (required)" className="h-7 min-w-0 flex-1 rounded-md border border-border bg-panel px-2 text-xs" />
++                      <button type="submit" disabled={!reason.trim()} className="h-7 rounded-md bg-fail px-2.5 text-xs text-white disabled:opacity-50">Reject</button>
++                      <button type="button" onClick={() => setRejecting(null)} className="h-7 rounded-md px-2 text-xs text-muted-foreground">Cancel</button>
++                    </form>
++                  ) : (
++                    <div className="mt-2 flex gap-2">
++                      <button
++                        type="button"
++                        onClick={() => {
++                          approve(i.id, managerName);
++                          onLog(`approved the fix for ${m.ref}; it is now compliant`);
++                          setOpenRecord(i.id);
++                        }}
++                        className="inline-flex h-7 items-center gap-1 rounded-md bg-ok px-2.5 text-xs text-white hover:opacity-90"
++                      >
++                        <Check className="h-3.5 w-3.5" /> Approve
++                      </button>
++                      <button type="button" onClick={() => { setRejecting(i.id); setReason(""); }} className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2.5 text-xs text-foreground hover:bg-panel-2">
++                        <X className="h-3.5 w-3.5" /> Reject
++                      </button>
++                    </div>
++                  )}
++                </li>
++              );
++            })}
++          </ul>
++        )}
++
++        {approved.length > 0 && (
++          <div className="mt-4 border-t border-border pt-3">
++            <p className="mb-1.5 font-mono text-[10px] uppercase tracking-wide text-ok">Approved · compliant</p>
++            <ul className="space-y-1.5">
++              {approved.map((i) => {
++                const m = meta(i.checkpointId);
++                const isOpen = openRecord === i.id;
++                return (
++                  <li key={i.id}>
++                    <button type="button" onClick={() => setOpenRecord(isOpen ? null : i.id)} className="flex w-full items-center gap-2 text-left text-xs" aria-expanded={isOpen}>
++                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-ok" />
++                      <span className="flex-1 text-foreground">{m.ref} {m.name}</span>
++                      <span className="text-[11px] text-primary">{isOpen ? "Hide evidence" : "View evidence"}</span>
++                      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
++                    </button>
++                    {isOpen && i.approval && <div className="mt-2"><ApprovalRecordCard r={i.approval} /></div>}
++                  </li>
++                );
++              })}
++            </ul>
++          </div>
++        )}
++      </Card>
++    </div>
++  );
++}
++
++/* ───────────────────────── Escalated to you (latest Simulate run) ───────────────────────── */
++
++export function EscalationAlerts({ pid, role, title }: { pid: Scope; role: Level; title: string }) {
++  const { lastRun, notifications } = useEscalations();
++  const projectNotes = useRoleNotifications(role, pid === "all" ? "project-a" : pid);
++  // "all": each project's notifications since its own latest Simulate run.
++  const scoped =
++    pid === "all"
++      ? notifications.filter((n) => n.recipient === role && (!lastRun[n.projectId] || n.runAt >= lastRun[n.projectId]!.runAt))
++      : projectNotes;
++  const notes = scoped.filter((n) => n.kind === "escalation" || n.kind === "approval-stalled");
++  const runs = (pid === "all" ? (Object.values(lastRun) as NonNullable<(typeof lastRun)[ProjectId]>[]) : lastRun[pid] ? [lastRun[pid]!] : []);
++  const run = runs.sort((a, b) => b.runAt.localeCompare(a.runAt))[0];
++  return (
++    <div id={`esc-alerts-${role}`} className="scroll-mt-6 rounded-xl transition-shadow">
++      <Card
++        title={title}
++        icon={BellRing}
++        note={run ? `From the Simulate run at ${new Date(run.runAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.` : "Run Simulate on the project page to check deadlines."}
++        right={<span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${notes.length ? "bg-fail/10 text-fail" : "bg-panel-2 text-muted-foreground"}`}>{notes.length} {notes.length === 1 ? "alert" : "alerts"}</span>}
++      >
++        {notes.length === 0 ? (
++          <div className="rounded-lg border border-dashed border-border bg-panel-2/40 px-4 py-5 text-center">
++            <p className="text-sm text-muted-foreground">{run ? "Nothing escalated to you in the last run." : "No escalation run yet."}</p>
++            <Link to="/projects" search={pid === "all" ? {} : { project: pid }} className="mt-2 inline-block text-xs text-primary hover:underline">Open a project and click Simulate →</Link>
++          </div>
++        ) : (
++          <ul className="divide-y divide-border">
++            {notes.map((n) => (
++              <li key={n.id} className="flex items-start gap-2 py-2">
++                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: n.kind === "approval-stalled" ? "var(--warn)" : "var(--fail)" }} />
++                <div className="min-w-0 flex-1">
++                  <p className="flex flex-wrap items-center gap-1.5 text-sm text-foreground">{pid === "all" && <ProjectTag pid={n.projectId} />}{n.title}</p>
++                  <p className="text-xs text-muted-foreground">{n.kind === "approval-stalled" ? "Approval stalled · " : ""}{n.detail}</p>
++                </div>
++              </li>
++            ))}
++          </ul>
++        )}
++      </Card>
++    </div>
++  );
++}
+--- /dev/null
++++ b/src/components/manager/ManagerPortfolio.tsx
+@@ -0,0 +1,220 @@
++import { ArrowRight, FolderKanban, Users } from "lucide-react";
++import { Mono } from "@/components/audit/atoms";
++import { Card } from "@/components/developer/DevSections";
++import { Tile, type Tone } from "@/components/manager/ManagerHeader";
++import { useEscalations } from "@/lib/escalation-store";
++import {
++  COMPLIANCE_TARGET,
++  MANAGER_PROJECTS,
++  MANAGER_PROJECT_IDS,
++  type Decision,
++  type ManagerView,
++  type Release,
++} from "@/lib/manager-data";
++import type { ProjectId } from "@/lib/audit-data";
++
++// "All projects" tab: the Manager's portfolio. One row per project they own, with an Open
++// button that switches to that project's tab. Numbers are rolled up from the per-project views.
++
++type Views = Record<ProjectId, ManagerView>;
++
++const STATUS_ORDER = { Blocked: 0, "At risk": 1, "On track": 2, Done: 3 } as const;
++const toneFor = (score: number): Tone => (score >= COMPLIANCE_TARGET ? "ok" : score >= 70 ? "warn" : "fail");
++const TONE_TEXT: Record<Tone, string> = { ok: "text-ok", warn: "text-warn", fail: "text-fail", info: "text-primary" };
++
++function worstRelease(view: ManagerView): { r: Release; status: keyof typeof STATUS_ORDER } | undefined {
++  const week = view.releases.filter((r) => r.daysAway >= 0 && r.daysAway <= 7);
++  const r = [...week].sort((a, b) => STATUS_ORDER[view.releaseStatus(a)] - STATUS_ORDER[view.releaseStatus(b)] || a.daysAway - b.daysAway)[0];
++  return r ? { r, status: view.releaseStatus(r) } : undefined;
++}
++
++/** Open escalation items per project that are past their limit (from the escalation store). */
++function useOverdueByProject(): Record<ProjectId, number> {
++  const { items, ageOf, ready } = useEscalations();
++  const out = { "project-a": 0, "project-b": 0, "project-c": 0 } as Record<ProjectId, number>;
++  if (!ready) return out;
++  for (const i of items) if (i.status === "open" && ageOf(i).overdueDays > 0) out[i.projectId] += 1;
++  return out;
++}
++
++export function PortfolioKpis({ views, pendingBy }: { views: Views; pendingBy: Record<ProjectId, Decision[]> }) {
++  const overdue = useOverdueByProject();
++  const ids = MANAGER_PROJECT_IDS;
++  const name = (pid: ProjectId) => MANAGER_PROJECTS[pid].name;
++
++  const below = ids.filter((p) => views[p].score < COMPLIANCE_TARGET);
++  const lowest = [...ids].sort((a, b) => views[a].score - views[b].score)[0]!;
++  const pending = ids.reduce((n, p) => n + pendingBy[p].length, 0);
++  const highRisk = ids.reduce((n, p) => n + pendingBy[p].filter((d) => d.risk === "High").length, 0);
++  const late = ids.reduce((n, p) => n + views[p].escalations.length + overdue[p], 0);
++  const lateProjects = ids.filter((p) => views[p].escalations.length + overdue[p] > 0);
++  const releases = ids.flatMap((p) => {
++    const w = worstRelease(views[p]);
++    return w ? [{ pid: p, ...w }] : [];
++  });
++  const worst = [...releases].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])[0];
++  const blocked = releases.filter((x) => x.status === "Blocked").length;
++
++  return (
++    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
++      <Tile
++        question="1 · Are my projects audit-ready?"
++        value={`${below.length} of ${ids.length}`}
++        valueSmall
++        tone={below.length === 0 ? "ok" : toneFor(views[lowest].score)}
++        sentence={below.length
++          ? <>below the {COMPLIANCE_TARGET}% target · lowest <span className="text-foreground">{name(lowest)} {views[lowest].score}%</span></>
++          : `All projects at or above ${COMPLIANCE_TARGET}%.`}
++        why="Each project is audited on its own; one weak project is still a finding."
++        action="Compare projects"
++        target="mgr-portfolio"
++      />
++      <Tile
++        question="2 · What needs my decision?"
++        value={String(pending)}
++        tone={pending ? "info" : "ok"}
++        sentence={pending
++          ? <>approvals across {ids.filter((p) => pendingBy[p].length).length} projects{highRisk ? <> · <span className="text-fail">{highRisk} high risk</span></> : null}</>
++          : "Nothing waiting on you."}
++        why="Fixes and exceptions wait on you until you decide."
++        action="Review fixes"
++        target="mgr-fixes"
++      />
++      <Tile
++        question="3 · What's late?"
++        value={String(late)}
++        tone={late ? "fail" : "ok"}
++        sentence={late ? <>past deadline in {lateProjects.map(name).join(", ")}</> : "Nothing is past its deadline."}
++        why="Late items become audit findings and delay releases."
++        action="See by project"
++        target="mgr-portfolio"
++      />
++      <Tile
++        question="4 · Can we ship this week?"
++        value={worst ? worst.status : "Nothing due"}
++        valueSmall
++        tone={worst?.status === "Blocked" ? "fail" : worst?.status === "At risk" ? "warn" : "ok"}
++        sentence={worst
++          ? <>{name(worst.pid)} {worst.r.version} on {worst.r.date.split(" ")[0]}{blocked > 1 ? <span className="text-muted-foreground"> · {blocked} projects blocked</span> : null}</>
++          : "No releases in the next 7 days."}
++        why="A failed gate means the release can't go out."
++        action="See by project"
++        target="mgr-portfolio"
++      />
++    </div>
++  );
++}
++
++export function MyProjects({ views, pendingBy, onOpen }: { views: Views; pendingBy: Record<ProjectId, Decision[]>; onOpen: (pid: ProjectId) => void }) {
++  const overdue = useOverdueByProject();
++  const { lastRun } = useEscalations();
++  return (
++    <div id="mgr-portfolio" className="scroll-mt-6">
++      <Card title="My projects" icon={FolderKanban} note="Every project you manage. Open one to see its full Manager view.">
++        <div className="overflow-x-auto">
++          <table className="w-full min-w-[520px] text-sm">
++            <thead>
++              <tr className="border-b border-border text-left font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
++                <th className="py-2 pr-3 font-normal">Project</th>
++                <th className="py-2 pr-3 font-normal">Audit-ready</th>
++                <th className="hidden py-2 pr-3 font-normal xl:table-cell">Failing</th>
++                <th className="py-2 pr-3 font-normal">Decisions</th>
++                <th className="py-2 pr-3 font-normal">Late</th>
++                <th className="py-2 pr-3 font-normal">Release this week</th>
++                <th className="hidden py-2 pr-3 font-normal xl:table-cell">Last Simulate</th>
++                <th className="py-2 font-normal" />
++              </tr>
++            </thead>
++            <tbody>
++              {MANAGER_PROJECT_IDS.map((pid) => {
++                const mp = MANAGER_PROJECTS[pid];
++                const v = views[pid];
++                const prev = v.scoreTrend[v.scoreTrend.length - 2];
++                const delta = prev === undefined ? 0 : v.score - prev;
++                const failing = v.pitCheckpoints.filter((c) =>
++                  c.kind === "automated" ? c.status !== "compliant" : !c.steps.every((s) => s.state === "done"),
++                ).length;
++                const late = v.escalations.length + overdue[pid];
++                const w = worstRelease(v);
++                const run = lastRun[pid];
++                return (
++                  <tr key={pid} className="border-b border-border last:border-0 hover:bg-panel-2/40">
++                    <td className="py-3 pr-3">
++                      <p className="text-foreground">{mp.name}</p>
++                      <p className="text-xs text-muted-foreground">{mp.bu} BU · {mp.team.length} people</p>
++                    </td>
++                    <td className="py-3 pr-3">
++                      <span className={`font-mono ${TONE_TEXT[toneFor(v.score)]}`}>{v.score}%</span>
++                      {delta !== 0 && <span className={`ml-1.5 font-mono text-[11px] ${delta > 0 ? "text-ok" : "text-fail"}`}>{delta > 0 ? "▲" : "▼"}{Math.abs(delta)}</span>}
++                    </td>
++                    <td className="hidden py-3 pr-3 font-mono xl:table-cell">{failing}</td>
++                    <td className="py-3 pr-3 font-mono">{pendingBy[pid].length}</td>
++                    <td className={`py-3 pr-3 font-mono ${late ? "text-fail" : "text-ok"}`}>{late}</td>
++                    <td className="py-3 pr-3">
++                      {w ? (
++                        <span className={w.status === "Blocked" ? "text-fail" : w.status === "At risk" ? "text-warn" : "text-ok"}>
++                          {w.status} <span className="text-xs text-muted-foreground">· {w.r.version}</span>
++                        </span>
++                      ) : <span className="text-muted-foreground">Nothing due</span>}
++                    </td>
++                    <td className="hidden py-3 pr-3 xl:table-cell"><Mono className="text-muted-foreground">{run ? new Date(run.runAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "never"}</Mono></td>
++                    <td className="py-3 text-right">
++                      <button
++                        type="button"
++                        onClick={() => onOpen(pid)}
++                        className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:border-primary/50 hover:bg-panel-2"
++                      >
++                        Open <ArrowRight className="h-3 w-3" />
++                      </button>
++                    </td>
++                  </tr>
++                );
++              })}
++            </tbody>
++          </table>
++        </div>
++      </Card>
++    </div>
++  );
++}
++
++export function PortfolioTeam() {
++  // People can sit on more than one project; show each person once with all their projects.
++  const people = new Map<string, { name: string; role: string; open: number; overdue: number; projects: string[] }>();
++  for (const pid of MANAGER_PROJECT_IDS) {
++    const mp = MANAGER_PROJECTS[pid];
++    for (const t of mp.team) {
++      const p = people.get(t.name) ?? { name: t.name, role: t.role, open: 0, overdue: 0, projects: [] };
++      p.open += t.open;
++      p.overdue += t.overdue;
++      if (!p.projects.includes(mp.name)) p.projects.push(mp.name);
++      people.set(t.name, p);
++    }
++  }
++  const list = [...people.values()].sort((a, b) => b.overdue - a.overdue || b.open - a.open);
++  return (
++    <Card title="Team across my projects" icon={Users} note={`${list.length} people. Sorted by overdue work, so you know who to check in with first.`}>
++      <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
++        {list.map((p) => (
++          <li key={p.name} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
++            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary-soft font-mono text-[11px] text-primary">
++              {p.name.split(" ").map((s) => s[0]).join("").slice(0, 2)}
++            </span>
++            <div className="min-w-0 flex-1">
++              <p className="truncate text-sm text-foreground">{p.name} <span className="text-xs text-muted-foreground">· {p.role}</span></p>
++              <div className="mt-0.5 flex flex-wrap gap-1">
++                {p.projects.map((n) => (
++                  <span key={n} className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{n}</span>
++                ))}
++              </div>
++            </div>
++            <div className="text-right font-mono text-[11px]">
++              <p className="text-foreground">{p.open} open</p>
++              <p className={p.overdue ? "text-fail" : "text-muted-foreground"}>{p.overdue} overdue</p>
++            </div>
++          </li>
++        ))}
++      </ul>
++    </Card>
++  );
++}
+--- /dev/null
++++ b/src/components/manager/project-context.tsx
+@@ -0,0 +1,13 @@
++import { createContext, useContext, type ReactNode } from "react";
++import { MANAGER_PROJECTS, type ManagerProject } from "@/lib/manager-data";
++import type { ProjectId } from "@/lib/audit-data";
++
++// Which project a Manager tab is showing. Sections read their names, components, team and
++// mock history from here instead of PIT Armour constants. Defaults to PIT Armour.
++const ManagerProjectContext = createContext<ManagerProject>(MANAGER_PROJECTS["project-a"]);
++
++export function ManagerProjectProvider({ pid, children }: { pid: ProjectId; children: ReactNode }) {
++  return <ManagerProjectContext.Provider value={MANAGER_PROJECTS[pid]}>{children}</ManagerProjectContext.Provider>;
++}
++
++export const useManagerProject = () => useContext(ManagerProjectContext);
+--- a/src/components/audit/CopilotSimulate.tsx
++++ b/src/components/audit/CopilotSimulate.tsx
+@@ -1,5 +1,5 @@
+ import { useEffect, useRef, useState } from "react";
+-import { CheckCircle2, ChevronDown, Loader2, Play, XCircle } from "lucide-react";
++import { BellRing, CheckCircle2, ChevronDown, Loader2, Mail, Play, RotateCcw, XCircle } from "lucide-react";
+ import {
+   runCp10Verification,
+   runCp38Verification,
+@@ -16,6 +16,9 @@
+ } from "@/lib/copilot-routing";
+ import { useLedgerSync } from "@/lib/use-ledger-sync";
+ import { CopilotResultDetails } from "./CopilotResultDetails";
++import type { ProjectId } from "@/lib/audit-data";
++import { useEscalations } from "@/lib/escalation-store";
++import { LEVEL_LABEL, type Level, type RunSummary } from "@/lib/escalation-data";
+ 
+ type SimAnswer = {
+   state: "loading" | "done" | "error";
+@@ -52,12 +55,16 @@
+ 
+ // Runs every copilot sample question (CP38, CP10, CR compliance)
+ // at once and lists each as a collapsible question → answer row.
+-export function CopilotSimulate() {
++// Simulate = step A (live copilot checks, above) + step B (escalation run): ages every open
++// checkpoint of this project against its limit and notifies Developer / Manager / CTO.
++export function CopilotSimulate({ projectId = "project-a" }: { projectId?: ProjectId }) {
+   const [open, setOpen] = useState(false);
+   const [answers, setAnswers] = useState<Record<string, SimAnswer> | null>(null);
+   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+   const containerRef = useRef<HTMLDivElement>(null);
+   const sync = useLedgerSync();
++  const esc = useEscalations();
++  const [run, setRun] = useState<RunSummary | null>(null);
+ 
+   const running = !!answers && Object.values(answers).some((a) => a.state === "loading");
+ 
+@@ -65,6 +72,7 @@
+     setOpen(true);
+     setExpanded({});
+     setAnswers(Object.fromEntries(SIMULATE_QUESTIONS.map((q) => [q, { state: "loading" } as SimAnswer])));
++    setRun(esc.runEscalation(projectId));
+     for (const q of SIMULATE_QUESTIONS) {
+       answerQuestion(q, sync)
+         .catch((err): SimAnswer => ({
+@@ -107,7 +115,9 @@
+               Run again
+             </button>
+           </div>
+-          <div className="max-h-[28rem] overflow-y-auto p-2">
++          <div className="max-h-[32rem] overflow-y-auto p-2">
++            {run && <EscalationResult run={run} onReset={() => { esc.resetDemo(); setRun(null); }} />}
++            <p className="px-2 pb-1 pt-2 font-mono text-[10px] uppercase tracking-wide text-faint">Live checks</p>
+             {SIMULATE_QUESTIONS.map((q) => {
+               const a = answers[q] ?? { state: "loading" };
+               const isOpen = !!expanded[q];
+@@ -149,3 +159,53 @@
+     </div>
+   );
+ }
++
++const LEVELS: Level[] = ["developer", "manager", "cto"];
++
++function EscalationResult({ run, onReset }: { run: RunSummary; onReset: () => void }) {
++  const [showAll, setShowAll] = useState(false);
++  const total = run.notifications.length;
++  const time = new Date(run.runAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
++  const list = showAll ? run.notifications : run.notifications.slice(0, 4);
++  return (
++    <div className="mb-2 rounded-md border border-border bg-panel-2/40 p-2.5 text-xs">
++      <div className="flex items-center gap-1.5">
++        <BellRing className="h-3.5 w-3.5 text-primary" />
++        <p className="font-semibold text-foreground">Escalations · run {time}</p>
++        <button type="button" onClick={onReset} className="ml-auto inline-flex items-center gap-1 text-[11px] text-primary hover:underline" title="Reload the demo items and clear notifications">
++          <RotateCcw className="h-3 w-3" /> Reset demo
++        </button>
++      </div>
++      {total === 0 ? (
++        <p className="mt-1.5 text-muted-foreground">No open checkpoints are near or past their limit.</p>
++      ) : (
++        <>
++          <div className="mt-2 flex flex-wrap gap-1.5">
++            {LEVELS.map((l) => (
++              <span key={l} className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${run.counts[l] ? (l === "cto" ? "bg-fail/10 text-fail" : l === "manager" ? "bg-warn/10 text-warn" : "bg-primary-soft text-primary") : "bg-panel-2 text-faint"}`}>
++                {LEVEL_LABEL[l]} {run.counts[l]}
++              </span>
++            ))}
++          </div>
++          <ul className="mt-2 space-y-1">
++            {list.map((n) => (
++              <li key={n.id} className="rounded border border-border bg-panel px-2 py-1">
++                <span className="font-mono text-[10px] text-faint">→ {LEVEL_LABEL[n.recipient]}{n.kind === "approval-stalled" ? " · approval stalled" : ""}</span>
++                <p className="text-foreground">{n.title}</p>
++                <p className="text-[11px] text-muted-foreground">{n.detail}</p>
++              </li>
++            ))}
++          </ul>
++          {total > 4 && (
++            <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1 text-[11px] text-primary hover:underline">
++              {showAll ? "Show fewer" : `Show all ${total} notifications`}
++            </button>
++          )}
++        </>
++      )}
++      <p className="mt-2 flex items-start gap-1 text-[11px] text-faint">
++        <Mail className="mt-0.5 h-3 w-3 shrink-0" /> {run.emailNote}
++      </p>
++    </div>
++  );
++}
+--- a/src/components/developer/DevSections.tsx
++++ b/src/components/developer/DevSections.tsx
+@@ -80,7 +80,8 @@
+ export function FixThese({
+   view, onResolve, onUndo, onLog,
+ }: { view: DeveloperView; onResolve: (id: string) => void; onUndo: (id: string) => void; onLog: (text: string) => void }) {
+-  const items = view.actions.filter((a) => a.severity !== "waiting");
++  // Escalation items have their own section with a Fixed button, so they're left out here.
++  const items = view.actions.filter((a) => a.severity !== "waiting" && a.source !== "escalation");
+   const [open, setOpen] = useState<string | null>(items[0]?.id ?? null);
+   const [checking, setChecking] = useState<string | null>(null);
+   const [note, setNote] = useState<Record<string, string>>({});
+@@ -172,7 +173,17 @@
+ 
+ const initials = (name: string) => name.split(" ").slice(0, 2).map((w) => w[0]).join("");
+ 
+-export function WaitingOnOthers({ view, onLog }: { view: DeveloperView; onLog: (text: string) => void }) {
++export function WaitingOnOthers({
++  view, onLog, onNudge, canNudge, onUndo,
++}: {
++  view: DeveloperView;
++  onLog: (text: string) => void;
++  /** Escalation items nudge through the store (once a day); others stay a local demo. */
++  onNudge?: (id: string) => void;
++  canNudge?: (id: string) => boolean;
++  /** Escalation items only: take the fix back before the Manager decides. */
++  onUndo?: (id: string) => void;
++}) {
+   const [nudged, setNudged] = useState<Record<string, boolean>>({});
+   const items = view.waiting;
+ 
+@@ -209,27 +220,47 @@
+                     <Mono className={days >= 2 ? "text-warn" : "text-faint"}>{a.since} waiting</Mono>
+                   </div>
+                 </div>
+-                <button
+-                  type="button"
+-                  disabled={nudged[a.id]}
+-                  onClick={() => {
+-                    setNudged((n) => ({ ...n, [a.id]: true }));
+-                    onLog(`You nudged ${person} about ${a.change}`);
+-                  }}
+-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs ${
+-                    nudged[a.id] ? "border-ok/30 bg-ok/10 text-ok" : "border-border text-foreground hover:border-primary/50 hover:bg-panel-2"
+-                  }`}
+-                  title="Demo only: no message is actually sent"
+-                >
+-                  {nudged[a.id] ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+-                  {nudged[a.id] ? "Nudged" : "Nudge"}
+-                </button>
++                {(() => {
++                  const viaStore = a.source === "escalation" && !!onNudge;
++                  const done = viaStore ? !(canNudge?.(a.id) ?? true) : !!nudged[a.id];
++                  return (
++                    <button
++                      type="button"
++                      disabled={done}
++                      onClick={() => {
++                        if (viaStore) onNudge!(a.id);
++                        else setNudged((n) => ({ ...n, [a.id]: true }));
++                        onLog(`You nudged ${person} about ${a.change}`);
++                      }}
++                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs ${
++                        done ? "border-ok/30 bg-ok/10 text-ok" : "border-border text-foreground hover:border-primary/50 hover:bg-panel-2"
++                      }`}
++                      title={viaStore ? "Notifies the Manager on their dashboard. Once a day per item." : "Demo only: no message is actually sent"}
++                    >
++                      {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
++                      {done ? (viaStore ? "Nudged · again tomorrow" : "Nudged") : "Nudge"}
++                    </button>
++                  );
++                })()}
++                {a.source === "escalation" && onUndo && (
++                  <button
++                    type="button"
++                    onClick={() => {
++                      onUndo(a.id);
++                      onLog(`You withdrew the fix for ${a.change}`);
++                    }}
++                    className="shrink-0 text-[11px] text-primary hover:underline"
++                    title="Take the fix back; it returns to Overdue & escalated"
++                  >
++                    Undo
++                  </button>
++                )}
+               </li>
+             );
+           })}
+         </ul>
+       )}
+-      <p className="mt-3 text-[11px] text-faint">Nudge is a demo: it logs the reminder in your activity but doesn't send a message.</p>
++      <p className="mt-3 text-[11px] text-faint">Nudge on a fix waiting for approval notifies the Manager on their dashboard, once a day. Other nudges are a demo.</p>
+     </Card>
+   );
+ }
+--- a/src/components/developer/DeveloperDashboard.tsx
++++ b/src/components/developer/DeveloperDashboard.tsx
+@@ -5,6 +5,9 @@
+ import { DevKpis } from "@/components/developer/DevKpis";
+ import { ActionBell } from "@/components/developer/ActionBell";
+ import { FixThese, MyActivity, ProjectRules, WaitingOnOthers } from "@/components/developer/DevSections";
++import { EscalatedWork, useEscalationActions } from "@/components/developer/EscalatedWork";
++import { useEscalations } from "@/lib/escalation-store";
++import type { ProjectId } from "@/lib/audit-data";
+ import { useAudit } from "@/lib/audit-store";
+ import { useRole } from "@/lib/role-store";
+ import { DEV_PERSONA as DEV, buildDeveloperView, type DevActivity } from "@/lib/developer-data";
+@@ -52,7 +55,25 @@
+   const [resolved, setResolved] = useState<Set<string>>(new Set());
+   const [local, setLocal] = useState<DevActivity[]>([]);
+ 
+-  const view = useMemo(() => buildDeveloperView(checkpoints, resolved), [checkpoints, resolved]);
++  const pid = (invite?.projectId ?? "project-a") as ProjectId;
++  const esc = useEscalations();
++  const escActions = useEscalationActions(pid);
++  const baseView = useMemo(() => buildDeveloperView(checkpoints, resolved), [checkpoints, resolved]);
++  // Escalation items join the bell, KPIs and Waiting on others.
++  const view = useMemo(
++    () => ({
++      ...baseView,
++      actions: [...escActions, ...baseView.actions],
++      blocking: [...escActions.filter((a) => a.severity === "blocking"), ...baseView.blocking],
++      due: [...escActions.filter((a) => a.severity === "due"), ...baseView.due],
++      waiting: [...escActions.filter((a) => a.severity === "waiting"), ...baseView.waiting],
++    }),
++    [baseView, escActions],
++  );
++  const canNudge = (id: string) => {
++    const item = esc.items.find((i) => i.id === id);
++    return item ? esc.canNudge(item) : false;
++  };
+ 
+   const log = (text: string) =>
+     setLocal((l) => [{ id: `local-${Date.now()}-${l.length}`, at: `Today ${clock}`, kind: "you", text }, ...l]);
+@@ -74,6 +95,8 @@
+ 
+       <DevKpis view={view} />
+ 
++      <EscalatedWork pid={pid} onLog={log} />
++
+       <Section
+         title="My changes — journey"
+         icon={RouteIcon}
+@@ -84,7 +107,7 @@
+ 
+       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+         <FixThese view={view} onResolve={resolve} onUndo={undo} onLog={log} />
+-        <WaitingOnOthers view={view} onLog={log} />
++        <WaitingOnOthers view={view} onLog={log} onNudge={esc.nudge} canNudge={canNudge} onUndo={esc.withdrawFix} />
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+--- a/src/components/layout/AppSidebar.tsx
++++ b/src/components/layout/AppSidebar.tsx
+@@ -1,5 +1,5 @@
+ import { Link } from "@tanstack/react-router";
+-import { LayoutDashboard, FolderKanban, AlertTriangle, Plug, ScrollText, ShieldHalf, LogOut } from "lucide-react";
++import { LayoutDashboard, FolderKanban, AlertTriangle, Plug, ScrollText, ShieldHalf, LogOut, Timer } from "lucide-react";
+ import { useAuth } from "@/lib/auth-store";
+ import { useRole } from "@/lib/role-store";
+ 
+@@ -7,14 +7,17 @@
+   { to: "/", label: "Home", icon: LayoutDashboard, group: "Overview" },
+   { to: "/projects", label: "Projects", icon: FolderKanban, group: "Compliance" },
+   { to: "/findings", label: "Findings", icon: AlertTriangle, group: "Compliance" },
++  { to: "/escalations", label: "Escalations", icon: Timer, group: "Compliance" },
+   { to: "/connectors", label: "Connectors", icon: Plug, group: "Compliance" },
+   { to: "/activity", label: "Activity", icon: ScrollText, group: "Compliance" },
+ ] as const;
+ 
+ // Invited developers only see their Developer home view.
+ function useNav() {
+-  const { invite } = useRole();
+-  return invite ? nav.filter((n) => n.to === "/") : nav;
++  const { invite, role } = useRole();
++  if (invite) return nav.filter((n) => n.to === "/");
++  // Developers don't configure deadlines (PRD: Escalations tab permissions).
++  return role === "developer" ? nav.filter((n) => n.to !== "/escalations") : nav;
+ }
+ 
+ export function AppSidebar() {
+--- a/src/components/manager/ManagerDashboard.tsx
++++ b/src/components/manager/ManagerDashboard.tsx
+@@ -12,59 +12,170 @@
+   Team,
+ } from "@/components/manager/ManagerSections";
+ import { FindingsFlow, ProblemAreas, RepeatOffences } from "@/components/manager/ManagerInsights";
++import { MyProjects, PortfolioKpis, PortfolioTeam } from "@/components/manager/ManagerPortfolio";
++import { ManagerProjectProvider } from "@/components/manager/project-context";
+ import { useAudit } from "@/lib/audit-store";
++import { EscalationAlerts, FixApprovals, useFixDecisions } from "@/components/manager/EscalationPanels";
+ import {
+-  DECISIONS,
+   MANAGER_PERSONA as M,
++  MANAGER_PROJECTS,
++  MANAGER_PROJECT_IDS,
+   buildManagerView,
+   type ComponentId,
++  type Decision,
+   type LeadActivity,
++  type ManagerView,
+ } from "@/lib/manager-data";
++import type { ProjectId } from "@/lib/audit-data";
+ 
+-// Manager view (frontend only, PIT Armour scope). Decisions, reassignments, SLA extensions,
++// Manager view (frontend only). The Manager owns several projects: "All projects" is the
++// portfolio, and each project tab is the full per-project view. Decisions, reassignments,
+ // comments and invites are kept in local state for the session; nothing is sent to the backend.
+ 
++type Tab = "all" | ProjectId;
++type Outcomes = Record<string, { outcome: "approved" | "rejected"; reason: string }>;
++
+ export function ManagerDashboard() {
+   const { checkpoints, clock } = useAudit();
+-  const view = useMemo(() => buildManagerView(checkpoints), [checkpoints]);
+-  const [selected, setSelected] = useState<ComponentId | null>(null);
+-  const [outcomes, setOutcomes] = useState<Record<string, { outcome: "approved" | "rejected"; reason: string }>>({});
++  const [tab, setTab] = useState<Tab>("all");
++  const [outcomes, setOutcomes] = useState<Outcomes>({});
+   const [local, setLocal] = useState<LeadActivity[]>([]);
+ 
+-  const pending = DECISIONS.filter((d) => !outcomes[d.id]);
++  const views = useMemo(
++    () => Object.fromEntries(MANAGER_PROJECT_IDS.map((p) => [p, buildManagerView(checkpoints, p)])) as Record<ProjectId, ManagerView>,
++    [checkpoints],
++  );
++
++  const fixA = useFixDecisions("project-a");
++  const fixB = useFixDecisions("project-b");
++  const fixC = useFixDecisions("project-c");
++  const fixAll = useFixDecisions("all");
++  const fixBy: Record<ProjectId, Decision[]> = { "project-a": fixA, "project-b": fixB, "project-c": fixC };
++  // Fixes waiting for approval count in the bell and the "What needs my decision?" KPI.
++  const pendingBy = Object.fromEntries(
++    MANAGER_PROJECT_IDS.map((p) => [p, [...fixBy[p], ...MANAGER_PROJECTS[p].decisions.filter((d) => !outcomes[d.id])]]),
++  ) as Record<ProjectId, Decision[]>;
++
+   const log = (text: string) =>
+     setLocal((l) => [{ id: `you-${Date.now()}-${l.length}`, at: `Today ${clock}`, actor: "You", source: "you", text }, ...l]);
+-  const decide = (id: string, outcome: "approved" | "rejected", reason: string) => {
++  const decide = (pid: ProjectId) => (id: string, outcome: "approved" | "rejected", reason: string) => {
+     setOutcomes((o) => ({ ...o, [id]: { outcome, reason } }));
+-    const d = DECISIONS.find((x) => x.id === id);
++    const d = MANAGER_PROJECTS[pid].decisions.find((x) => x.id === id);
+     if (d) log(`${outcome} "${d.title}"${reason ? `: ${reason}` : ""}`);
+   };
+ 
++  // Bell on the All projects tab: every project's escalations, tagged with the project.
++  const allPending = [...fixAll, ...MANAGER_PROJECT_IDS.flatMap((p) => MANAGER_PROJECTS[p].decisions.filter((d) => !outcomes[d.id]))];
++  const allView: ManagerView = {
++    ...views["project-a"],
++    escalations: MANAGER_PROJECT_IDS.flatMap((p) =>
++      views[p].escalations.map((e) => ({ ...e, id: `${p}-${e.id}`, title: `${MANAGER_PROJECTS[p].name} · ${e.title}` })),
++    ),
++  };
++
++  // Activity feed on All projects: every project's feed, interleaved and tagged.
++  const allActivity: LeadActivity[] = [];
++  const longest = Math.max(...MANAGER_PROJECT_IDS.map((p) => MANAGER_PROJECTS[p].activity.length));
++  for (let i = 0; i < longest; i++)
++    for (const p of MANAGER_PROJECT_IDS) {
++      const a = MANAGER_PROJECTS[p].activity[i];
++      if (a) allActivity.push({ ...a, id: `${p}-${a.id}`, text: `[${MANAGER_PROJECTS[p].name}] ${a.text}` });
++    }
++
++  const mp = tab === "all" ? null : MANAGER_PROJECTS[tab];
++
+   return (
+     <div className="mx-auto max-w-[1400px] space-y-6">
+       <PageHeader
+-        title="PIT Armour · Manager view"
+-        subtitle={`${M.bu} business unit · ${M.name} (${M.role}) — health, risk, releases, team and decisions`}
++        title={mp ? `${mp.name} · Manager view` : "My projects · Manager view"}
++        subtitle={mp
++          ? `${mp.bu} business unit · ${M.name} (${M.role}) — health, risk, releases, team and decisions`
++          : `${M.name} (${M.role}) · ${MANAGER_PROJECT_IDS.length} projects — what needs you across all of them`}
+         trailing={
+           <div className="flex items-center gap-2">
+             <ToolLinks />
+-            <ManagerBell pending={pending} view={view} />
++            {tab === "all"
++              ? <ManagerBell pending={allPending} view={allView} />
++              : <ManagerBell pending={pendingBy[tab]} view={views[tab]} />}
+           </div>
+         }
+       />
+ 
++      <div role="tablist" aria-label="Projects" className="flex flex-wrap gap-1 rounded-lg border border-border bg-panel p-1 shadow-card">
++        {(["all", ...MANAGER_PROJECT_IDS] as Tab[]).map((t) => {
++          const active = t === tab;
++          const count = t === "all" ? allPending.length : pendingBy[t].length;
++          return (
++            <button
++              key={t}
++              type="button"
++              role="tab"
++              aria-selected={active}
++              onClick={() => setTab(t)}
++              className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-sm transition-colors ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-panel-2 hover:text-foreground"}`}
++            >
++              {t === "all" ? "All projects" : MANAGER_PROJECTS[t].name}
++              {count > 0 && (
++                <span className={`rounded-full px-1.5 font-mono text-[10px] ${active ? "bg-white/20" : "bg-primary-soft text-primary"}`}>{count}</span>
++              )}
++            </button>
++          );
++        })}
++      </div>
++
++      {tab === "all" ? (
++        <>
++          <PortfolioKpis views={views} pendingBy={pendingBy} />
++          <MyProjects views={views} pendingBy={pendingBy} onOpen={setTab} />
++          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
++            <EscalationAlerts pid="all" role="manager" title="Escalated to you · all projects" />
++            <FixApprovals pid="all" managerName={M.name} onLog={log} />
++          </div>
++          <PortfolioTeam />
++          <LeadActivityFeed local={local} activity={allActivity} />
++        </>
++      ) : (
++        <ManagerProjectProvider key={tab} pid={tab}>
++          <ProjectTab
++            pid={tab}
++            view={views[tab]}
++            pending={pendingBy[tab]}
++            outcomes={outcomes}
++            onDecide={decide(tab)}
++            local={local}
++            onLog={log}
++          />
++        </ManagerProjectProvider>
++      )}
++    </div>
++  );
++}
++
++function ProjectTab({ pid, view, pending, outcomes, onDecide, local, onLog }: {
++  pid: ProjectId; view: ManagerView; pending: Decision[]; outcomes: Outcomes;
++  onDecide: (id: string, outcome: "approved" | "rejected", reason: string) => void;
++  local: LeadActivity[]; onLog: (t: string) => void;
++}) {
++  const [selected, setSelected] = useState<ComponentId | null>(null);
++  return (
++    <>
+       <ManagerKpis view={view} pending={pending} />
+ 
+       <HealthCards selected={selected} onSelect={setSelected} liveScore={view.score} />
+ 
+       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+         <ProblemAreas view={view} selected={selected} />
+-        <RepeatOffences onLog={log} />
++        <RepeatOffences onLog={onLog} />
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+-        <Escalations view={view} selected={selected} onLog={log} />
+-        <DecisionsInbox decisions={DECISIONS} outcomes={outcomes} onDecide={decide} />
++        <EscalationAlerts pid={pid} role="manager" title="Escalated to you" />
++        <FixApprovals pid={pid} managerName={M.name} onLog={onLog} />
++      </div>
++
++      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
++        <Escalations view={view} selected={selected} onLog={onLog} />
++        <DecisionsInbox decisions={MANAGER_PROJECTS[pid].decisions} outcomes={outcomes} onDecide={onDecide} />
+       </div>
+ 
+       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+@@ -75,11 +186,11 @@
+       <FindingsFlow />
+ 
+       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+-        <Team onLog={log} />
++        <Team onLog={onLog} />
+         <LeadActivityFeed local={local} />
+       </div>
+ 
+       <AuditReadiness view={view} />
+-    </div>
++    </>
+   );
+ }
+--- a/src/components/manager/ManagerHeader.tsx
++++ b/src/components/manager/ManagerHeader.tsx
+@@ -48,7 +48,7 @@
+         <button
+           key={t.key}
+           type="button"
+-          title={`${t.label} for PIT Armour (link not configured yet)`}
++          title={`${t.label} (link not configured yet)`}
+           aria-label={`Open ${t.label}`}
+           className="grid h-7 w-7 place-items-center rounded-md hover:bg-panel-2"
+         >
+@@ -92,7 +92,7 @@
+           <p className="mb-1 mt-1 font-mono text-[10px] uppercase tracking-wide text-primary">Decisions waiting on you · {pending.length}</p>
+           {pending.length === 0 && <p className="py-2 text-xs text-muted-foreground">No decisions pending.</p>}
+           {pending.map((d) => (
+-            <button key={d.id} type="button" onClick={() => scrollToSection("mgr-decisions")} className="flex w-full items-start gap-2 border-b border-border py-2 text-left last:border-0 hover:bg-panel-2/50">
++            <button key={d.id} type="button" onClick={() => scrollToSection(d.id.startsWith("esc-") ? "mgr-fixes" : "mgr-decisions")} className="flex w-full items-start gap-2 border-b border-border py-2 text-left last:border-0 hover:bg-panel-2/50">
+               <Gavel className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+               <span className="min-w-0 flex-1">
+                 <span className="block text-sm text-foreground">{d.title}</span>
+@@ -118,7 +118,7 @@
+ 
+ /* ───────── KPI tiles: one plain question, one number, why it matters, one action ───────── */
+ 
+-type Tone = "ok" | "warn" | "fail" | "info";
++export type Tone = "ok" | "warn" | "fail" | "info";
+ const TONE: Record<Tone, { text: string; border: string }> = {
+   ok: { text: "text-ok", border: "border-border" },
+   warn: { text: "text-warn", border: "border-warn/40" },
+@@ -126,7 +126,7 @@
+   info: { text: "text-primary", border: "border-primary/40" },
+ };
+ 
+-function Tile({ question, value, valueSmall, tone, sentence, why, action, target }: {
++export function Tile({ question, value, valueSmall, tone, sentence, why, action, target }: {
+   question: string; value: string; valueSmall?: boolean; tone: Tone; sentence: React.ReactNode;
+   why: string; action: string; target: string;
+ }) {
+--- a/src/components/manager/ManagerInsights.tsx
++++ b/src/components/manager/ManagerInsights.tsx
+@@ -3,6 +3,7 @@
+ import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+ import { BarChart3, CheckCircle2, ChevronDown, Repeat2, TrendingDown, Wrench, UserRound, Eye } from "lucide-react";
+ import { Mono, StatusPill } from "@/components/audit/atoms";
++import { useManagerProject } from "@/components/manager/project-context";
+ import { Card, Chips } from "@/components/developer/DevSections";
+ import { LiveTag } from "@/components/developer/DevKpis";
+ import { RiskHeatmap } from "@/components/manager/RiskHeatmap";
+@@ -21,6 +22,7 @@
+ /* ───────────────────────── Which rules are failing most? (real data) ───────────────────────── */
+ 
+ export function ProblemAreas({ view, selected }: { view: ManagerView; selected: ComponentId | null }) {
++  const mp = useManagerProject();
+   const [mode, setMode] = useState<"ranked" | "grid">("ranked");
+   const [showAll, setShowAll] = useState(false);
+   const [open, setOpen] = useState<string | null>(null);
+@@ -92,7 +94,7 @@
+                                 <span className="min-w-0 flex-1 text-xs text-foreground">{c.name}</span>
+                                 <span className="text-[11px] text-muted-foreground">{c.ownerRole}</span>
+                                 <StatusPill status={c.status} />
+-                                <Link to="/projects" search={{ project: "project-a" }} className="rounded-md border border-border px-2 py-0.5 text-[11px] text-foreground hover:bg-panel">Open</Link>
++                                <Link to="/projects" search={{ project: mp.pid }} className="rounded-md border border-border px-2 py-0.5 text-[11px] text-foreground hover:bg-panel">Open</Link>
+                               </li>
+                             ))}
+                           </ul>
+@@ -125,10 +127,11 @@
+ };
+ 
+ export function RepeatOffences({ onLog }: { onLog: (t: string) => void }) {
++  const mp = useManagerProject();
+   const [open, setOpen] = useState<string | null>(null);
+   const [done, setDone] = useState<Record<string, boolean>>({});
+   const [showAll, setShowAll] = useState(false);
+-  const sorted = [...REPEAT_OFFENCES].sort((a, b) => b.times - a.times);
++  const sorted = [...mp.offences].sort((a, b) => b.times - a.times);
+   const list = showAll ? sorted : sorted.slice(0, 3);
+ 
+   return (
+@@ -173,7 +176,7 @@
+         </ul>
+         <div className="mt-2 flex items-center justify-between">
+           <button type="button" onClick={() => setShowAll((v) => !v)} className="text-[11px] text-primary hover:underline">
+-            {showAll ? "Show top 3 only" : `Show all ${REPEAT_OFFENCES.length}`}
++            {showAll ? "Show top 3 only" : `Show all ${mp.offences.length}`}
+           </button>
+           <span className="text-[11px] text-faint">Mock history for the POC</span>
+         </div>
+@@ -185,18 +188,19 @@
+ /* ───────────────────────── Findings flow + aging ───────────────────────── */
+ 
+ export function FindingsFlow() {
++  const mp = useManagerProject();
+   const data = useMemo(() => {
+-    let backlog = BACKLOG_START;
+-    return FLOW_WEEKS.map((w) => {
++    let backlog = mp.backlogStart;
++    return mp.flow.map((w) => {
+       backlog += w.opened - w.closed;
+       return { ...w, backlog };
+     });
+-  }, []);
++  }, [mp]);
+   const last = data[data.length - 1];
+   const first = data[0];
+   const net = last ? last.closed - last.opened : 0;
+-  const agingTotal = AGING.reduce((s, a) => s + a.count, 0);
+-  const overSla = AGING.filter((a) => a.bucket.startsWith("8") || a.bucket.startsWith(">")).reduce((s, a) => s + a.count, 0);
++  const agingTotal = mp.aging.reduce((s, a) => s + a.count, 0);
++  const overSla = mp.aging.filter((a) => a.bucket.startsWith("8") || a.bucket.startsWith(">")).reduce((s, a) => s + a.count, 0);
+ 
+   return (
+     <div id="mgr-flow" className="scroll-mt-6 rounded-xl transition-shadow">
+@@ -234,10 +238,10 @@
+             <p className="mb-1 text-xs text-foreground">Age of open findings</p>
+             <p className="mb-3 text-[11px] text-muted-foreground">{agingTotal} open · <span className={overSla ? "text-fail" : ""}>{overSla} older than a week</span></p>
+             <div className="mb-3 flex h-3 overflow-hidden rounded-full bg-panel-2">
+-              {AGING.map((a) => <div key={a.bucket} title={`${a.bucket}: ${a.count}`} style={{ width: `${(a.count / agingTotal) * 100}%`, background: a.color, opacity: a.bucket.startsWith(">") ? 1 : 0.8 }} />)}
++              {mp.aging.map((a) => <div key={a.bucket} title={`${a.bucket}: ${a.count}`} style={{ width: `${(a.count / agingTotal) * 100}%`, background: a.color, opacity: a.bucket.startsWith(">") ? 1 : 0.8 }} />)}
+             </div>
+             <ul className="space-y-1.5">
+-              {AGING.map((a) => (
++              {mp.aging.map((a) => (
+                 <li key={a.bucket} className="flex items-center gap-2 text-xs">
+                   <span className="h-2 w-2 rounded-full" style={{ background: a.color }} />
+                   <span className="w-14 text-muted-foreground">{a.bucket}</span>
+--- a/src/components/manager/ManagerSections.tsx
++++ b/src/components/manager/ManagerSections.tsx
+@@ -20,6 +20,7 @@
+   XCircle,
+ } from "lucide-react";
+ import { Mono } from "@/components/audit/atoms";
++import { useManagerProject } from "@/components/manager/project-context";
+ import { Card, Chips, Empty } from "@/components/developer/DevSections";
+ import { LiveTag } from "@/components/developer/DevKpis";
+ import { AuditReportModal } from "@/components/audit/AuditReportModal";
+@@ -36,6 +37,7 @@
+   GATES,
+   LEAD_ACTIVITY,
+   TEAM,
++  type Component,
+   type ComponentId,
+   type Decision,
+   type GateState,
+@@ -45,7 +47,7 @@
+ } from "@/lib/manager-data";
+ 
+ const initials = (n: string) => n.split(" ").slice(0, 2).map((w) => w[0]).join("");
+-const compName = (id: ComponentId) => COMPONENTS.find((c) => c.id === id)?.name ?? id;
++const compName = (id: ComponentId, list: Component[] = COMPONENTS) => list.find((c) => c.id === id)?.name ?? id;
+ 
+ function Anchor({ id, children }: { id: string; children: React.ReactNode }) {
+   return <div id={id} className="scroll-mt-6 rounded-xl transition-shadow">{children}</div>;
+@@ -56,7 +58,8 @@
+ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+ 
+ export function HealthCards({ selected, onSelect, liveScore }: { selected: ComponentId | null; onSelect: (id: ComponentId | null) => void; liveScore: number }) {
+-  const rows = COMPONENTS.map((c) => {
++  const mp = useManagerProject();
++  const rows = mp.components.map((c) => {
+     const status = c.nc > 0 ? "attention" : c.overdue > 0 ? "late" : "ok";
+     return { ...c, status };
+   }).sort((a, b) => b.nc - a.nc || b.overdue - a.overdue || a.score - b.score);
+@@ -70,9 +73,9 @@
+ 
+   return (
+     <Anchor id="mgr-health">
+-      <Card title="Which part of PIT Armour needs attention?" icon={LayoutGrid}
++      <Card title={`Which part of ${mp.name} needs attention?`} icon={LayoutGrid}
+         note={`${needs.length} of ${rows.length} parts need attention · project overall ${liveScore}% (live). Worst first.`}
+-        right={selected && <button type="button" onClick={() => onSelect(null)} className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary-soft px-2 py-0.5 text-[11px] text-primary"><X className="h-3 w-3" /> Showing {compName(selected)} · clear</button>}>
++        right={selected && <button type="button" onClick={() => onSelect(null)} className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary-soft px-2 py-0.5 text-[11px] text-primary"><X className="h-3 w-3" /> Showing {compName(selected, mp.components)} · clear</button>}>
+         <ul className="divide-y divide-border">
+           {needs.map((r) => {
+             const serious = r.status === "attention";
+@@ -109,6 +112,7 @@
+ /* ───────────────────────── Issues by developers ───────────────────────── */
+ 
+ export function DeveloperIssues({ view, selected }: { view: ManagerView; selected: ComponentId | null }) {
++  const mp = useManagerProject();
+   const [person, setPerson] = useState<string>("All");
+   const [status, setStatus] = useState<"open" | "all">("open");
+   const people = ["All", ...Array.from(new Set(view.issues.map((i) => i.who)))];
+@@ -121,7 +125,7 @@
+   return (
+     <Anchor id="mgr-issues">
+       <Card title="Issues by developers" icon={AlertTriangle}
+-        note="Process breaches by people on PIT Armour, so you can coach, not just count."
++        note={`Process breaches by people on ${mp.name}, so you can coach, not just count.`}
+         right={<Chips value={status} onChange={setStatus} options={[{ value: "open", label: "Open" }, { value: "all", label: "All" }]} />}>
+         <Chips value={person} onChange={setPerson} options={people.map((p) => ({ value: p, label: p }))} />
+         {shown.length === 0 ? <Empty text="No matching issues." /> : (
+@@ -135,7 +139,7 @@
+                     {i.live && <LiveTag />}
+                   </div>
+                   <p className="mt-0.5 text-xs text-muted-foreground">
+-                    {i.who} · {i.process} · {i.change} · {compName(i.component)} · {i.when}
++                    {i.who} · {i.process} · {i.change} · {compName(i.component, mp.components)} · {i.when}
+                   </p>
+                 </div>
+                 <div className="flex shrink-0 flex-col items-end gap-1">
+@@ -154,6 +158,7 @@
+ /* ───────────────────────── Escalations ───────────────────────── */
+ 
+ export function Escalations({ view, selected, onLog }: { view: ManagerView; selected: ComponentId | null; onLog: (t: string) => void }) {
++  const mp = useManagerProject();
+   const [owner, setOwner] = useState<Record<string, string>>({});
+   const [extending, setExtending] = useState<string | null>(null);
+   const [reason, setReason] = useState("");
+@@ -194,7 +199,7 @@
+                       className="h-7 rounded-md border border-border bg-panel px-2 text-xs text-foreground"
+                       aria-label="Reassign"
+                     >
+-                      {TEAM.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
++                      {mp.team.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                     </select>
+                     <button type="button" onClick={() => { setExtending(e.id); setReason(""); }} className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-panel-2">
+                       <Clock3 className="h-3.5 w-3.5" /> Extend SLA
+@@ -326,6 +331,7 @@
+ };
+ 
+ export function ReleaseCalendar({ view, selected }: { view: ManagerView; selected: ComponentId | null }) {
++  const mp = useManagerProject();
+   const [showPast, setShowPast] = useState(false);
+   const list = view.releases
+     .filter((r) => (showPast || r.daysAway >= 0) && (!selected || r.component === selected))
+@@ -342,7 +348,7 @@
+                 <li key={r.id} className="rounded-lg border border-border p-3">
+                   <div className="flex flex-wrap items-center gap-2">
+                     <span className="font-mono text-sm text-foreground">{r.version}</span>
+-                    <span className="text-xs text-muted-foreground">{r.date} · {compName(r.component)} · {r.changes}</span>
++                    <span className="text-xs text-muted-foreground">{r.date} · {compName(r.component, mp.components)} · {r.changes}</span>
+                     <span className={`ml-auto rounded-full px-2 py-0.5 font-mono text-[10px] ${STATUS_CLS[status]}`}>{status}</span>
+                   </div>
+                   <div className="mt-2 flex flex-wrap items-center gap-1">
+@@ -372,7 +378,8 @@
+ /* ───────────────────────── Team ───────────────────────── */
+ 
+ export function Team({ onLog }: { onLog: (t: string) => void }) {
+-  const [team, setTeam] = useState<TeamMember[]>(TEAM);
++  const mp = useManagerProject();
++  const [team, setTeam] = useState<TeamMember[]>(mp.team);
+   const [open, setOpen] = useState(false);
+   const [email, setEmail] = useState("");
+   const [role, setRole] = useState("Developer");
+@@ -383,14 +390,14 @@
+     ev.preventDefault();
+     if (!/^\S+@\S+\.\S+$/.test(email.trim())) { setErr("Enter a valid work email"); return; }
+     const name = email.trim().split("@")[0]?.replace(/[._]/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()) ?? email;
+-    setTeam((t) => [...t, { name, role, open: 0, overdue: 0, access: ["PIT Armour"], status: "invited" }]);
+-    onLog(`invited ${email.trim()} to PIT Armour as ${role}`);
++    setTeam((t) => [...t, { name, role, open: 0, overdue: 0, access: [mp.name], status: "invited" }]);
++    onLog(`invited ${email.trim()} to ${mp.name} as ${role}`);
+     setEmail(""); setErr(""); setOpen(false);
+   };
+ 
+   return (
+     <Anchor id="mgr-team">
+-      <Card title="Team · PIT Armour" icon={Users} note="Workload per person (open and overdue items), and who has access to which project."
++      <Card title={`Team · ${mp.name}`} icon={Users} note="Workload per person (open and overdue items), and who has access to which project."
+         right={<button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground hover:bg-primary/90"><UserPlus className="h-3.5 w-3.5" /> Invite developer</button>}>
+         <ul className="divide-y divide-border">
+           {team.map((t) => (
+@@ -408,7 +415,7 @@
+                 <Mono className="text-faint">{t.open} open{t.overdue ? ` · ${t.overdue} overdue` : ""}</Mono>
+               </div>
+               <div className="flex flex-wrap gap-1">
+-                {t.access.map((a) => <span key={a} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${a === "PIT Armour" ? "bg-primary-soft text-primary" : "bg-panel-2 text-muted-foreground"}`}>{a}</span>)}
++                {t.access.map((a) => <span key={a} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${a === mp.name ? "bg-primary-soft text-primary" : "bg-panel-2 text-muted-foreground"}`}>{a}</span>)}
+               </div>
+             </li>
+           ))}
+@@ -419,8 +426,8 @@
+       <Dialog open={open} onOpenChange={setOpen}>
+         <DialogContent className="sm:max-w-md">
+           <DialogHeader>
+-            <DialogTitle>Invite to PIT Armour</DialogTitle>
+-            <DialogDescription>They'll get an email link to set up their account and will only see PIT Armour. (Demo: nothing is sent yet.)</DialogDescription>
++            <DialogTitle>Invite to {mp.name}</DialogTitle>
++            <DialogDescription>They'll get an email link to set up their account and will only see {mp.name}. (Demo: nothing is sent yet.)</DialogDescription>
+           </DialogHeader>
+           <form onSubmit={submit} className="space-y-3">
+             <label className="block text-xs text-muted-foreground">Work email
+@@ -434,7 +441,7 @@
+               </select>
+             </label>
+             <label className="block text-xs text-muted-foreground">Project
+-              <input value="PIT Armour" readOnly className="mt-1 h-9 w-full rounded-md border border-border bg-panel-2 px-2 text-sm text-muted-foreground" />
++              <input value={mp.name} readOnly className="mt-1 h-9 w-full rounded-md border border-border bg-panel-2 px-2 text-sm text-muted-foreground" />
+             </label>
+             <DialogFooter>
+               <button type="button" onClick={() => setOpen(false)} className="h-9 rounded-md px-3 text-sm text-muted-foreground">Cancel</button>
+@@ -458,9 +465,10 @@
+   you: { label: "You", icon: CheckCircle2, cls: "bg-ok/10 text-ok" },
+ };
+ 
+-export function LeadActivityFeed({ local }: { local: LeadActivity[] }) {
++export function LeadActivityFeed({ local, activity }: { local: LeadActivity[]; activity?: LeadActivity[] | undefined }) {
++  const mp = useManagerProject();
+   const [src, setSrc] = useState<"all" | LeadActivity["source"]>("all");
+-  const all = [...local, ...LEAD_ACTIVITY];
++  const all = [...local, ...(activity ?? mp.activity)];
+   const shown = all.filter((a) => src === "all" || a.source === src);
+   const n = (s: LeadActivity["source"]) => all.filter((a) => a.source === s).length;
+   return (
+@@ -494,13 +502,14 @@
+ /* ───────────────────────── Audit readiness ───────────────────────── */
+ 
+ export function AuditReadiness({ view }: { view: ManagerView }) {
++  const mp = useManagerProject();
+   const [open, setOpen] = useState(false);
+   const [showAll, setShowAll] = useState(false);
+   const rows = showAll ? view.readiness : view.readiness.slice(0, 6);
+   return (
+     <Anchor id="mgr-audit">
+       <Card title="Audit readiness" icon={FileDown}
+-        note="Share of PIT Armour checkpoints with verified evidence captured (live), weakest areas first."
++        note={`Share of ${mp.name} checkpoints with verified evidence captured (live), weakest areas first.`}
+         right={<button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-panel-2"><FileDown className="h-3.5 w-3.5" /> Download report</button>}>
+         <div className="mb-3 flex items-end gap-3">
+           <span className={`font-mono text-3xl leading-none ${view.readinessPct >= 90 ? "text-ok" : view.readinessPct >= 70 ? "text-warn" : "text-fail"}`}>{view.readinessPct}%</span>
+@@ -524,7 +533,7 @@
+           </button>
+         )}
+       </Card>
+-      <AuditReportModal isOpen={open} onClose={() => setOpen(false)} projectName="PIT Armour" projectClient="Newel Technologies · Enterprise BU"
++      <AuditReportModal isOpen={open} onClose={() => setOpen(false)} projectName={mp.name} projectClient={`Newel Technologies · ${mp.bu} BU`}
+         compliancePct={view.score} checkpoints={view.pitCheckpoints} />
+     </Anchor>
+   );
+--- a/src/components/manager/RiskHeatmap.tsx
++++ b/src/components/manager/RiskHeatmap.tsx
+@@ -2,10 +2,11 @@
+ import { Link } from "@tanstack/react-router";
+ import { ChevronRight, Grid3x3, X } from "lucide-react";
+ import { Mono, StatusPill } from "@/components/audit/atoms";
++import { useManagerProject } from "@/components/manager/project-context";
+ import { Card, Chips } from "@/components/developer/DevSections";
+ import { LiveTag } from "@/components/developer/DevKpis";
+ import {
+-  COMPONENT_COLUMNS,
++  componentColumns,
+   HEATMAP_DOMAINS,
+   WEEK_COLUMNS,
+   buildHeatmap,
+@@ -34,10 +35,11 @@
+   );
+ 
+ export function RiskHeatmap({ view, selected, embedded = false }: { view: ManagerView; selected: ComponentId | null; embedded?: boolean }) {
++  const mp = useManagerProject();
+   const [mode, setMode] = useState<Mode>("components");
+   const [issuesOnly, setIssuesOnly] = useState(true);
+   const { live, cell } = useMemo(() => buildHeatmap(view.pitCheckpoints), [view.pitCheckpoints]);
+-  const columns = mode === "components" ? COMPONENT_COLUMNS : WEEK_COLUMNS;
++  const columns = mode === "components" ? componentColumns(mp.components) : WEEK_COLUMNS;
+ 
+   const moduleHasIssue = (m: string) => columns.some((col) => cell(m, col.key).bad > 0);
+   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
+@@ -191,7 +193,7 @@
+                     <span className="min-w-0 flex-1 text-xs text-foreground">{c.name}</span>
+                     <span className="text-[11px] text-muted-foreground">{c.ownerRole}</span>
+                     <StatusPill status={c.status} />
+-                    <Link to="/projects" search={{ project: "project-a" }} className="rounded-md border border-border px-2 py-0.5 text-[11px] text-foreground hover:bg-panel">Open</Link>
++                    <Link to="/projects" search={{ project: mp.pid }} className="rounded-md border border-border px-2 py-0.5 text-[11px] text-foreground hover:bg-panel">Open</Link>
+                   </li>
+                 ))}
+               </ul>
+--- a/src/lib/developer-data.ts
++++ b/src/lib/developer-data.ts
+@@ -19,6 +19,7 @@
+   steps?: string[]; // how to fix (blocking / due)
+   who?: string; // person it is waiting on (waiting)
+   since?: string; // how long it has been waiting (waiting)
++  source?: "escalation"; // from the escalation flow (Fixed / Nudge go through escalation-store)
+ };
+ 
+ export type Rule = { id: string; group: "Code" | "Approvals" | "Release"; rule: string; detail: string; process: string };
+--- a/src/lib/manager-data.ts
++++ b/src/lib/manager-data.ts
+@@ -1,4 +1,4 @@
+-import type { Checkpoint } from "@/lib/audit-data";
++import type { Checkpoint, ProjectId } from "@/lib/audit-data";
+ 
+ // Manager-view data for the POC, scoped to PIT Armour. Live parts are computed from the
+ // real checkpoint state (project-a): compliance score, the heatmap's live column,
+@@ -144,7 +144,7 @@
+   component: ComponentId;
+   changes: string;
+   gates: GateState[]; // aligned with GATES
+-  liveNote?: string;
++  liveNote?: string | undefined;
+   blocker?: string;
+ };
+ 
+@@ -167,13 +167,13 @@
+ ];
+ 
+ const byId = (list: Checkpoint[], id: string) => list.find((c) => c.id === id);
+-const isPit = (c: Checkpoint) => (c.projectId ?? "project-a") === "project-a";
++const inProject = (pid: ProjectId) => (c: Checkpoint) => (c.projectId ?? "project-a") === pid;
+ 
+ const passed = (c: Checkpoint) =>
+   c.kind === "automated" ? c.status === "compliant" : c.steps.every((s) => s.state === "done");
+ 
+-export function buildManagerView(checkpoints: Checkpoint[]) {
+-  const pit = checkpoints.filter(isPit);
++export function buildManagerView(checkpoints: Checkpoint[], pid: ProjectId = "project-a") {
++  const pit = checkpoints.filter(inProject(pid));
+   const cp18 = byId(checkpoints, "cp-18");
+   const cp10 = byId(checkpoints, "cp-10");
+   const cp38 = byId(checkpoints, "cp-38");
+@@ -263,9 +263,24 @@
+       : r.daysAway < 0 ? (r.gates.includes("fail") ? "Blocked" : "At risk")
+       : "On track";
+ 
++  // SAATHI / MPS reuse PIT Armour's mock shape with their own names; live hooks are PIT-only.
++  const mp = MANAGER_PROJECTS[pid];
++  const own = <T,>(x: T): T => (pid === "project-a" ? x : rebrand(x, mp.replace));
+   return {
+-    score, scoreTrend, readiness, readinessPct,
+-    issues, escalations, releases, releaseStatus,
++    score,
++    scoreTrend: pid === "project-a" ? scoreTrend : [...mp.scoreHistory.map((h) => Math.max(0, Math.min(100, h - mp.scoreHistory[mp.scoreHistory.length - 1]! + score + mp.lastStep))), score],
++    readiness, readinessPct,
++    issues: own(issues).map((i) => ({ ...i, live: pid === "project-a" && i.live })),
++    escalations: own(escalations).filter((e) => pid === "project-a" || !e.live),
++    releases: own(releases).map((r) => {
++      if (pid === "project-a") return r;
++      if (pid === "project-b" && r.gates.includes("fail") && r.daysAway >= 0) {
++        const { blocker: _b, ...rest } = r;
++        return { ...rest, liveNote: undefined, gates: r.gates.map((g) => (g === "fail" ? "done" : g)) };
++      }
++      return { ...r, liveNote: undefined };
++    }),
++    releaseStatus,
+     pitCheckpoints: pit,
+   };
+ }
+@@ -285,10 +300,11 @@
+ export type HeatCell = { bad: number; nc: number; total: number; mock?: boolean };
+ export type HeatColumn = { key: string; label: string; live?: boolean };
+ 
+-export const COMPONENT_COLUMNS: HeatColumn[] = [
++export const componentColumns = (components: Component[]): HeatColumn[] => [
+   { key: "overall", label: "Overall", live: true },
+-  ...COMPONENTS.map((c) => ({ key: c.id, label: c.name.replace("PIT Armour ", "").replace(" (Mail / Jira)", "") })),
++  ...components.map((c) => ({ key: c.id, label: c.name.replace("PIT Armour ", "").replace(" (Mail / Jira)", "") })),
+ ];
++export const COMPONENT_COLUMNS: HeatColumn[] = componentColumns(COMPONENTS);
+ export const WEEK_COLUMNS: HeatColumn[] = [
+   { key: "w-5", label: "5 wk ago" },
+   { key: "w-4", label: "4 wk" },
+@@ -403,3 +419,85 @@
+   { bucket: "8–14 d", count: 2, color: "var(--fail)" },
+   { bucket: "> 14 d", count: 1, color: "var(--fail)" },
+ ];
++
++/* ───────── Per-project datasets (Manager tabs: All projects · PIT Armour · SAATHI · MPS) ───────── */
++
++// SAATHI and MPS reuse PIT Armour's mock data shape with their own components, people and
++// change keys, so each tab reads like its own project. Only PIT Armour has live hooks.
++function rebrand<T>(x: T, map: [string, string][]): T {
++  let json = JSON.stringify(x);
++  for (const [from, to] of map) json = json.split(from).join(to);
++  return JSON.parse(json) as T;
++}
++
++export type ManagerProject = {
++  pid: ProjectId;
++  name: string;
++  bu: string;
++  replace: [string, string][];
++  scoreHistory: number[];
++  /** Previous point minus the live score: negative = trending up. */
++  lastStep: number;
++  components: Component[];
++  team: TeamMember[];
++  decisions: Decision[];
++  offences: Offence[];
++  activity: LeadActivity[];
++  flow: typeof FLOW_WEEKS;
++  backlogStart: number;
++  aging: typeof AGING;
++};
++
++const SAATHI_MAP: [string, string][] = [
++  ["PIT Armour API", "Payment Gateway API"], ["PIT Armour Web", "Merchant Portal"],
++  ["Batch & Reports", "Settlement Engine"], ["Integrations (Mail / Jira)", "Fraud Rules"],
++  ["pit-armour-api", "saathi-gateway"], ["pit-armour-web", "saathi-merchant"], ["pit-armour-batch", "saathi-settlement"], ["pit-armour-integrations", "saathi-fraud"],
++  ["Rahul Verma", "Sneha Kapoor"], ["Aditya Sharma", "Vivek Pillai"], ["Farhan Ali", "Pooja Reddy"], ["Kunal Shah", "Ritu Saxena"],
++  ["Tanvi Kulkarni", "Divya Iyer"], ["Anushka Patil", "Ishita Menon"],
++  ["v2.4.3", "v3.0.4"], ["v2.5.0", "v3.1.0"], ["v1.8.2", "v1.2.0"], ["v2.4.2", "v3.0.3"],
++  ["PIT Armour", "SAATHI"], ["CR-POC", "CR-SAT"], ["\"Kunal", "\"Ritu"], ["@Kunal", "@Ritu"],
++];
++const MPS_MAP: [string, string][] = [
++  ["PIT Armour API", "Data Pipeline"], ["PIT Armour Web", "BI Dashboards"],
++  ["Batch & Reports", "PII Masking"], ["Integrations (Mail / Jira)", "Risk Models"],
++  ["pit-armour-api", "mps-pipeline"], ["pit-armour-web", "mps-bi"], ["pit-armour-batch", "mps-masking"], ["pit-armour-integrations", "mps-risk"],
++  ["Rahul Verma", "Karan Mehta"], ["Aditya Sharma", "Manoj Kumar"], ["Farhan Ali", "Suresh Pillai"], ["Kunal Shah", "Abhishek Rana"],
++  ["Tanvi Kulkarni", "Priya Nair"], ["Anushka Patil", "Meera Joshi"],
++  ["v2.4.3", "v4.2.1"], ["v2.5.0", "v4.3.0"], ["v1.8.2", "v0.9.5"], ["v2.4.2", "v4.2.0"],
++  ["PIT Armour", "MPS"], ["CR-POC", "CR-MPS"], ["@Kunal", "@Abhishek"],
++];
++
++const shiftScores = (list: Component[], by: number): Component[] =>
++  list.map((c) => ({
++    ...c,
++    score: Math.min(99, c.score + by),
++    trend: c.trend.map((v) => Math.min(99, v + by)),
++    nc: by >= 8 ? Math.max(0, c.nc - 1) : c.nc,
++    overdue: by >= 8 ? Math.max(0, c.overdue - 1) : c.overdue,
++  }));
++
++function variant(pid: ProjectId, name: string, bu: string, map: [string, string][], scoreBy: number, scoreHistory: number[], lastStep: number, flowBy: number): ManagerProject {
++  return {
++    pid, name, bu, replace: map, scoreHistory, lastStep,
++    components: shiftScores(rebrand(COMPONENTS, map), scoreBy),
++    team: rebrand(TEAM, map),
++    decisions: rebrand(DECISIONS, map).map((d) => ({ ...d, id: `${pid}-${d.id}` })).slice(0, 3),
++    offences: rebrand(REPEAT_OFFENCES, map).map((o) => ({ ...o, times: Math.max(1, o.times - (scoreBy >= 8 ? 1 : 0)) })),
++    activity: rebrand(LEAD_ACTIVITY, map),
++    flow: FLOW_WEEKS.map((w) => ({ ...w, opened: Math.max(1, w.opened - flowBy) })),
++    backlogStart: Math.max(4, BACKLOG_START - flowBy * 2),
++    aging: AGING.map((a, i) => ({ ...a, count: Math.max(0, a.count - (i === 0 ? 0 : flowBy)) })),
++  };
++}
++
++export const MANAGER_PROJECTS: Record<ProjectId, ManagerProject> = {
++  "project-a": {
++    pid: "project-a", name: "PIT Armour", bu: "Enterprise", replace: [], scoreHistory: SCORE_TREND_HISTORY, lastStep: 0,
++    components: COMPONENTS, team: TEAM, decisions: DECISIONS, offences: REPEAT_OFFENCES, activity: LEAD_ACTIVITY,
++    flow: FLOW_WEEKS, backlogStart: BACKLOG_START, aging: AGING,
++  },
++  "project-b": variant("project-b", "SAATHI", "Operation", SAATHI_MAP, 10, [78, 81, 84, 86, 88], -3, 2),
++  "project-c": variant("project-c", "MPS", "FnA", MPS_MAP, 4, [70, 72, 75, 77, 79], 2, 1),
++};
++
++export const MANAGER_PROJECT_IDS: ProjectId[] = ["project-a", "project-b", "project-c"];
+--- a/src/routeTree.gen.ts
++++ b/src/routeTree.gen.ts
+@@ -13,6 +13,7 @@
+ import { Route as ActivityRouteImport } from './routes/activity'
+ import { Route as ConnectorsRouteImport } from './routes/connectors'
+ import { Route as ControlsRouteImport } from './routes/controls'
++import { Route as EscalationsRouteImport } from './routes/escalations'
+ import { Route as FindingsRouteImport } from './routes/findings'
+ import { Route as ProjectsRouteImport } from './routes/projects'
+ import { Route as ConnectorsSourceRouteImport } from './routes/connectors.$source'
+@@ -38,6 +39,11 @@
+   path: '/controls',
+   getParentRoute: () => rootRouteImport,
+ } as any)
++const EscalationsRoute = EscalationsRouteImport.update({
++  id: '/escalations',
++  path: '/escalations',
++  getParentRoute: () => rootRouteImport,
++} as any)
+ const FindingsRoute = FindingsRouteImport.update({
+   id: '/findings',
+   path: '/findings',
+@@ -64,6 +70,7 @@
+   '/activity': typeof ActivityRoute
+   '/connectors': typeof ConnectorsRouteWithChildren
+   '/controls': typeof ControlsRoute
++  '/escalations': typeof EscalationsRoute
+   '/findings': typeof FindingsRoute
+   '/projects': typeof ProjectsRoute
+   '/connectors/$source': typeof ConnectorsSourceRoute
+@@ -74,6 +81,7 @@
+   '/activity': typeof ActivityRoute
+   '/connectors': typeof ConnectorsRouteWithChildren
+   '/controls': typeof ControlsRoute
++  '/escalations': typeof EscalationsRoute
+   '/findings': typeof FindingsRoute
+   '/projects': typeof ProjectsRoute
+   '/connectors/$source': typeof ConnectorsSourceRoute
+@@ -85,6 +93,7 @@
+   '/activity': typeof ActivityRoute
+   '/connectors': typeof ConnectorsRouteWithChildren
+   '/controls': typeof ControlsRoute
++  '/escalations': typeof EscalationsRoute
+   '/findings': typeof FindingsRoute
+   '/projects': typeof ProjectsRoute
+   '/connectors/$source': typeof ConnectorsSourceRoute
+@@ -97,6 +106,7 @@
+     | '/activity'
+     | '/connectors'
+     | '/controls'
++    | '/escalations'
+     | '/findings'
+     | '/projects'
+     | '/connectors/$source'
+@@ -107,6 +117,7 @@
+     | '/activity'
+     | '/connectors'
+     | '/controls'
++    | '/escalations'
+     | '/findings'
+     | '/projects'
+     | '/connectors/$source'
+@@ -117,6 +128,7 @@
+     | '/activity'
+     | '/connectors'
+     | '/controls'
++    | '/escalations'
+     | '/findings'
+     | '/projects'
+     | '/connectors/$source'
+@@ -128,6 +140,7 @@
+   ActivityRoute: typeof ActivityRoute
+   ConnectorsRoute: typeof ConnectorsRouteWithChildren
+   ControlsRoute: typeof ControlsRoute
++  EscalationsRoute: typeof EscalationsRoute
+   FindingsRoute: typeof FindingsRoute
+   ProjectsRoute: typeof ProjectsRoute
+   InviteTokenRoute: typeof InviteTokenRoute
+@@ -163,6 +176,13 @@
+       preLoaderRoute: typeof ControlsRouteImport
+       parentRoute: typeof rootRouteImport
+     }
++    '/escalations': {
++      id: '/escalations'
++      path: '/escalations'
++      fullPath: '/escalations'
++      preLoaderRoute: typeof EscalationsRouteImport
++      parentRoute: typeof rootRouteImport
++    }
+     '/findings': {
+       id: '/findings'
+       path: '/findings'
+@@ -211,6 +231,7 @@
+   ActivityRoute: ActivityRoute,
+   ConnectorsRoute: ConnectorsRouteWithChildren,
+   ControlsRoute: ControlsRoute,
++  EscalationsRoute: EscalationsRoute,
+   FindingsRoute: FindingsRoute,
+   ProjectsRoute: ProjectsRoute,
+   InviteTokenRoute: InviteTokenRoute,
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -14,6 +14,7 @@
+ import appCss from "../styles.css?url";
+ import { reportLovableError } from "../lib/lovable-error-reporting";
+ import { AuditProvider } from "../lib/audit-store";
++import { EscalationProvider } from "../lib/escalation-store";
+ import { AuthProvider, useAuth } from "../lib/auth-store";
+ import { RoleProvider, useRole } from "../lib/role-store";
+ import { SignInScreen } from "../components/layout/SignInScreen";
+@@ -153,6 +154,7 @@
+ 
+   return (
+     <AuditProvider>
++      <EscalationProvider>
+       <div className="flex min-h-screen w-full bg-background">
+         <AppSidebar />
+         <div className="min-w-0 flex-1">
+@@ -164,6 +166,7 @@
+         </div>
+       </div>
+       {!invite && <Cp38Copilot />}
++      </EscalationProvider>
+     </AuditProvider>
+   );
+ }
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -61,6 +61,10 @@
+ import { Mono, SectionHeading, StatusPill } from "@/components/audit/atoms";
+ import { PageHeader } from "@/components/layout/PageHeader";
+ import { BusinessUnitDrilldown } from "@/components/audit/BusinessUnitDrilldown";
++import { DeveloperDashboard } from "@/components/developer/DeveloperDashboard";
++import { ManagerDashboard } from "@/components/manager/ManagerDashboard";
++import { useRole } from "@/lib/role-store";
++import { EscalationAlerts } from "@/components/manager/EscalationPanels";
+ 
+ export const Route = createFileRoute("/")({
+   head: () => ({
+@@ -80,9 +84,17 @@
+       { name: "twitter:card", content: "summary_large_image" },
+     ],
+   }),
+-  component: HomePage,
++  component: HomeRoute,
+ });
+ 
++// CTO = the existing executive dashboard (HomePage, unchanged); Manager / Developer = role views.
++function HomeRoute() {
++  const { role } = useRole();
++  if (role === "developer") return <DeveloperDashboard />;
++  if (role === "manager") return <ManagerDashboard />;
++  return <HomePage />;
++}
++
+ const statusColor: Record<string, string> = {
+   compliant: "var(--ok)",
+   "non-compliant": "var(--fail)",
+@@ -328,6 +340,9 @@
+         subtitle="Compliance synopsis across every module, worker and manual workflow — Newel Technologies"
+       />
+ 
++      {/* CTO: checkpoints escalated past limit + 2 days, and stalled approvals (escalation flow) */}
++      <EscalationAlerts pid="all" role="cto" title="Escalated to you · all projects" />
++
+       {/* Executive Business Unit Filter Toolbar */}
+       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-panel p-3.5 shadow-card">
+         <div className="flex items-center gap-2">
+--- a/src/routes/projects.tsx
++++ b/src/routes/projects.tsx
+@@ -31,14 +31,14 @@
+ import { AuditReportModal } from "@/components/audit/AuditReportModal";
+ import { AddProjectModal } from "@/components/audit/AddProjectModal";
+ import { DependencyBell } from "@/components/audit/DependencyBell";
++import { CopilotSimulate } from "@/components/audit/CopilotSimulate";
+ import { Rollup } from "@/components/audit/panels";
+ import { Mono, SectionHeading } from "@/components/audit/atoms";
+ import { PageHeader } from "@/components/layout/PageHeader";
+ 
+ export const Route = createFileRoute("/projects")({
+-  validateSearch: (search: Record<string, unknown>) => ({
+-    project: typeof search.project === "string" ? search.project : undefined,
+-  }),
++  validateSearch: (search: Record<string, unknown>): { project?: string } =>
++    typeof search["project"] === "string" ? { project: search["project"] } : {},
+   head: () => ({
+     meta: [
+       { title: "Projects — Audit Intelligence" },
+@@ -241,7 +241,7 @@
+     });
+   };
+ 
+-  const selectedProjectMeta = projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0];
++  const selectedProjectMeta = projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0] ?? null;
+ 
+   const moduleCheckpoints = useMemo(
+     () => (openModule ? checkpoints.filter((c) => checkpointModule[c.id] === openModule) : []),
+@@ -568,6 +568,8 @@
+     );
+   }
+ 
++  if (!selectedProjectMeta) return null;
++
+   // LEVEL 2: Project Detail View (e.g. Project - A) with Controls & Modules
+   return (
+     <div className="mx-auto max-w-[1400px] space-y-7">
+@@ -590,8 +592,12 @@
+           <span className="text-muted-foreground">Controls</span>
+         </div>
+ 
+-        {/* Dependency version alerts (GitHub Dependency Version Monitoring POC) */}
+-        <DependencyBell />
++        <div className="flex items-center gap-2">
++          {/* Runs every copilot question at once — separate from the dependency alerts */}
++          <CopilotSimulate projectId={(selectedProjectMeta?.id ?? "project-a") as ProjectId} />
++          {/* Dependency version alerts (GitHub Dependency Version Monitoring POC) */}
++          <DependencyBell />
++        </div>
+       </div>
+ 
+       <PageHeader

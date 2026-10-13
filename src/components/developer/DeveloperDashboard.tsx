@@ -4,7 +4,15 @@ import { Mono } from "@/components/audit/atoms";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DevKpis } from "@/components/developer/DevKpis";
 import { ActionBell } from "@/components/developer/ActionBell";
-import { FixThese, MyActivity, ProjectRules, WaitingOnOthers } from "@/components/developer/DevSections";
+import {
+  FixThese,
+  MyActivity,
+  ProjectRules,
+  WaitingOnOthers,
+} from "@/components/developer/DevSections";
+import { EscalatedWork, useEscalationActions } from "@/components/developer/EscalatedWork";
+import { useEscalations } from "@/lib/escalation-store";
+import type { ProjectId } from "@/lib/audit-data";
 import { useAudit } from "@/lib/audit-store";
 import { useRole } from "@/lib/role-store";
 import { DEV_PERSONA as DEV, buildDeveloperView, type DevActivity } from "@/lib/developer-data";
@@ -52,10 +60,34 @@ export function DeveloperDashboard() {
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const [local, setLocal] = useState<DevActivity[]>([]);
 
-  const view = useMemo(() => buildDeveloperView(checkpoints, resolved), [checkpoints, resolved]);
+  const pid = (invite?.projectId ?? "project-a") as ProjectId;
+  const esc = useEscalations();
+  const escActions = useEscalationActions(pid);
+  const baseView = useMemo(
+    () => buildDeveloperView(checkpoints, resolved),
+    [checkpoints, resolved],
+  );
+  // Escalation items join the bell, KPIs and Waiting on others.
+  const view = useMemo(
+    () => ({
+      ...baseView,
+      actions: [...escActions, ...baseView.actions],
+      blocking: [...escActions.filter((a) => a.severity === "blocking"), ...baseView.blocking],
+      due: [...escActions.filter((a) => a.severity === "due"), ...baseView.due],
+      waiting: [...escActions.filter((a) => a.severity === "waiting"), ...baseView.waiting],
+    }),
+    [baseView, escActions],
+  );
+  const canNudge = (id: string) => {
+    const item = esc.items.find((i) => i.id === id);
+    return item ? esc.canNudge(item) : false;
+  };
 
   const log = (text: string) =>
-    setLocal((l) => [{ id: `local-${Date.now()}-${l.length}`, at: `Today ${clock}`, kind: "you", text }, ...l]);
+    setLocal((l) => [
+      { id: `local-${Date.now()}-${l.length}`, at: `Today ${clock}`, kind: "you", text },
+      ...l,
+    ]);
   const resolve = (id: string) => setResolved((s) => new Set(s).add(id));
   const undo = (id: string) =>
     setResolved((s) => {
@@ -74,6 +106,8 @@ export function DeveloperDashboard() {
 
       <DevKpis view={view} />
 
+      <EscalatedWork pid={pid} onLog={log} />
+
       <Section
         title="My changes — journey"
         icon={RouteIcon}
@@ -84,7 +118,13 @@ export function DeveloperDashboard() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <FixThese view={view} onResolve={resolve} onUndo={undo} onLog={log} />
-        <WaitingOnOthers view={view} onLog={log} />
+        <WaitingOnOthers
+          view={view}
+          onLog={log}
+          onNudge={esc.nudge}
+          canNudge={canNudge}
+          onUndo={esc.withdrawFix}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

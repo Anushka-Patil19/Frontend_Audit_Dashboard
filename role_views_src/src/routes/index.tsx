@@ -336,7 +336,7 @@ function HomePage() {
     <div className="mx-auto max-w-[1400px] space-y-6">
       <PageHeader
         title="Home"
-        subtitle="Compliance synopsis across every module, worker and manual workflow — Acme Capital"
+        subtitle="Compliance synopsis across every module, worker and manual workflow — Newel Technologies"
       />
 
       {/* Executive Business Unit Filter Toolbar */}
