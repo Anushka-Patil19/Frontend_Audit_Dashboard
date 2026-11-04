@@ -76,7 +76,7 @@ async def verify_cp10(cfg: Cp10ProjectConfig) -> Cp10VerifyResponse:
     reporter_name: str | None = reporter.get("displayName")
 
     # Step 4 — Jira gate. Fails → stop here, mail is never even searched.
-    if status_name != "Pending CAB Approval":
+    if status_name not in ("Pending CAB Approval", "Approved"):
         gates.jira = "failed"
         result = Cp10Result(
             project_id=cfg.project_id,
