@@ -52,6 +52,8 @@ import {
   statusLabel,
   getCheckpointProjectId,
   projectsData,
+  isCheckpointDone,
+  overallCompliancePct,
   type Status,
   type BusinessUnit,
   type ProjectId,
@@ -243,14 +245,7 @@ function HomePage() {
     (c) => c.status === "non-compliant" || c.status === "needs-review",
   );
   const healthy = connectors.filter((c) => c.state === "healthy").length;
-  const overall = Math.round(
-    (checkpoints.reduce((sum, c) => {
-      if (c.kind === "automated") return sum + (c.status === "compliant" ? 1 : 0);
-      return sum + c.steps.filter((s) => s.state === "done").length / (c.steps.length || 1);
-    }, 0) /
-      (checkpoints.length || 1)) *
-      100,
-  );
+  const overall = overallCompliancePct(checkpoints);
 
   const statusMix = Object.entries(
     checkpoints.reduce<Record<string, number>>((acc, c) => {
@@ -308,11 +303,7 @@ function HomePage() {
       const pid = c.projectId || "project-a";
       if (!pMap[pid]) pMap[pid] = { total: 0, compliant: 0, highBlockers: 0 };
       pMap[pid].total += 1;
-      if (c.kind === "automated") {
-        if (c.status === "compliant") pMap[pid].compliant += 1;
-      } else {
-        pMap[pid].compliant += c.steps.filter((s) => s.state === "done").length / c.steps.length;
-      }
+      if (isCheckpointDone(c)) pMap[pid].compliant += 1;
       if (c.status === "non-compliant") {
         pMap[pid].highBlockers += 1;
       }
@@ -618,7 +609,7 @@ function HomePage() {
           }
         >
           <ul className="divide-y divide-border">
-            {findings.map((f) => (
+            {findings.slice(0, 5).map((f) => (
               <li
                 key={f.id}
                 className="group flex flex-wrap items-center gap-3 py-2.5 hover:bg-panel-2/50 px-1 rounded transition-colors"
@@ -840,17 +831,15 @@ function HomePage() {
                       <div className="mt-4 pt-3 border-t border-border/70">
                         <div className="flex items-baseline justify-between">
                           <span className={`font-mono text-xl font-semibold ${scoreTone}`}>
-                            {stats.pct}%
+                            {stats.done}/{stats.items.length}
                           </span>
-                          <Mono className="text-[11px] text-faint">
-                            {stats.items.length} checks
-                          </Mono>
+                          <Mono className="text-[11px] text-faint">checks completed</Mono>
                         </div>
 
                         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-accent">
                           <span
                             className={`block h-full rounded-full transition-all ${barTone}`}
-                            style={{ width: `${stats.pct}%` }}
+                            style={{ width: `${stats.items.length ? (stats.done / stats.items.length) * 100 : 0}%` }}
                           />
                         </div>
 
@@ -920,15 +909,15 @@ function HomePage() {
                             <td className="px-4 py-3">
                               <div className="space-y-1">
                                 <div className="flex items-baseline justify-between font-mono text-xs">
-                                  <span className={`font-semibold ${scoreTone}`}>{stats.pct}%</span>
-                                  <span className="text-[10px] text-faint">
-                                    {stats.items.length} checks
+                                  <span className={`font-semibold ${scoreTone}`}>
+                                    {stats.done}/{stats.items.length}
                                   </span>
+                                  <span className="text-[10px] text-faint">checks completed</span>
                                 </div>
                                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-accent">
                                   <span
                                     className={`block h-full rounded-full ${barTone}`}
-                                    style={{ width: `${stats.pct}%` }}
+                                    style={{ width: `${stats.items.length ? (stats.done / stats.items.length) * 100 : 0}%` }}
                                   />
                                 </div>
                               </div>

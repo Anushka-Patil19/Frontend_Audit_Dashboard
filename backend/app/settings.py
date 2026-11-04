@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     # Saved Outlook on the web login (scripts/outlook_login.py) used to screenshot
     # the real email in Outlook. Without it, the email is re-rendered from Graph.
     outlook_session_file: str = "outlook_session.json"
+    # Saved Jira web login (scripts/jira_login.py) used to screenshot the real Jira
+    # issue page for CP6. Without it, the issue is re-rendered from the REST API.
+    jira_session_file: str = "jira_session.json"
+    # CP40: post each new check result as a comment on the Jira ticket (the PDF's
+    # "post result on the ticket"). Off by default — it writes to Jira.
+    jira_post_result_comments: bool = False
+    # Pull request mandatory (CP20 + GitHub tracking): only PRs / Jira tickets /
+    # commits created between these IST days (YYYY-MM-DD, inclusive) are shown.
+    # Empty = no limit on that side. See app/config/date_range.py.
+    pr_ticket_date_from: str | None = None
+    pr_ticket_date_to: str | None = None
 
     @property
     def frontend_origins(self) -> list[str]:

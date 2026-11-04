@@ -7,5 +7,6 @@ evidence/*.png
 invites.json
 escalations.json
 outlook_session.json*
+jira_session.json*
 compliance_mail_log.json
 compliance.json

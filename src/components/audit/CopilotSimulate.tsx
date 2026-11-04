@@ -12,14 +12,23 @@ import {
 import {
   runCp10Verification,
   runCp38Verification,
+  runCp6Verification,
+  runCp20Verification,
+  runCp40Verification,
   runCrComplianceVerification,
+  type Cp20Result,
   type Cp10Result,
   type Cp38Result,
+  type Cp6Result,
+  type Cp40Result,
   type CrComplianceResult,
 } from "@/lib/api-client";
 import {
   COPILOT_SUGGESTIONS,
   looksLikeCp10Question,
+  looksLikeCp6Question,
+  looksLikeCp20Question,
+  looksLikeCp40Question,
   looksLikeCrComplianceQuestion,
   looksLikeDependencyQuestion,
 } from "@/lib/copilot-routing";
@@ -37,6 +46,9 @@ type SimAnswer = {
   cp38Result?: Cp38Result | null;
   cp10Result?: Cp10Result | null;
   crResult?: CrComplianceResult | null;
+  cp6Result?: Cp6Result | null;
+  cp40Result?: Cp40Result | null;
+  cp20Result?: Cp20Result | null;
 };
 
 // The dependency question stays in the chat's suggestions but isn't simulated.
@@ -47,6 +59,37 @@ type LedgerSync = ReturnType<typeof useLedgerSync>;
 // Same keyword routing as the copilot chat, and like the chat it writes each
 // result back to the checkpoint ledger, so evidence shows on the cards too.
 async function answerQuestion(question: string, sync: LedgerSync): Promise<SimAnswer> {
+  if (looksLikeCp20Question(question)) {
+    const res = await runCp20Verification({ data: { question } });
+    sync.applyCp20(res);
+    const outcome = res.result?.outcome_id;
+    return {
+      state: "done",
+      passed: outcome === "CP20-C" || outcome === "CP20-CE",
+      text: res.reply,
+      cp20Result: res.result,
+    };
+  }
+  if (looksLikeCp40Question(question)) {
+    const res = await runCp40Verification({ data: { question } });
+    sync.applyCp40(res);
+    return {
+      state: "done",
+      passed: res.result?.outcome_id === "CP40-C",
+      text: res.reply,
+      cp40Result: res.result,
+    };
+  }
+  if (looksLikeCp6Question(question)) {
+    const res = await runCp6Verification({ data: { question } });
+    sync.applyCp6(res);
+    return {
+      state: "done",
+      passed: res.result?.outcome_id === "CP6-C",
+      text: res.reply,
+      cp6Result: res.result,
+    };
+  }
   if (looksLikeCrComplianceQuestion(question)) {
     const res = await runCrComplianceVerification({ data: { question } });
     sync.applyCr(res);
@@ -77,7 +120,7 @@ async function answerQuestion(question: string, sync: LedgerSync): Promise<SimAn
   };
 }
 
-// Runs every copilot sample question (CP38, CP10, CR compliance)
+// Runs every copilot sample question (CP38, CP10, CP6, CP20, CP40, CR compliance)
 // at once and lists each as a collapsible question → answer row.
 // Simulate = step A (live copilot checks, above) + step B (escalation run): ages every open
 // checkpoint of this project against its limit and notifies Developer / Manager / CTO.
@@ -221,6 +264,9 @@ export function CopilotSimulate({ projectId = "project-a" }: { projectId?: Proje
                         cp38Result={a.cp38Result}
                         cp10Result={a.cp10Result}
                         crResult={a.crResult}
+                        cp6Result={a.cp6Result}
+                        cp40Result={a.cp40Result}
+                        cp20Result={a.cp20Result}
                       />
                     </div>
                   )}

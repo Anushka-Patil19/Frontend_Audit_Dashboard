@@ -70,8 +70,11 @@ which is why sorting happens client-side instead of via the query.
 
 | Checkpoint | Subject must contain | Config location |
 |---|---|---|
-| CP38 | `"PIT Armour UAT Sign-off"` (one fixed phrase) | `subjectMatch` in [`cp38-config.ts`](../src/lib/cp38-config.ts) |
-| CP10 | `"POC-3"` **or** `"PIT-Arnour CAB Approval"` (either matches) | `subjectMatches: string[]` in [`cp10-config.ts`](../src/lib/cp10-config.ts) |
+| CP38 | No fixed subject. A sign-off phrase (`signed off` / `sign-off` / `sign off` / `signoff`) must be in the subject **or** body; the LLM reads both | `_SIGN_OFF_RE` / `_SIGN_OFF_QUERIES` in [`cp38_verify.py`](../backend/app/services/cp38_verify.py) |
+| CP10 | `"POC-3"` **or** `"PIT-Arnour CAB Approval"` (either matches) | `subjectMatches` in [`cp10_config.py`](../backend/app/config/cp10_config.py) |
+
+CP38 runs three `$search` queries (`sign off`, `signed off`, `signoff`, up to
+25 results each), merges them, and post-filters with the regex on subject + body.
 
 CP10's multi-pattern case is built as an OR inside the KQL search string
 (`subject:A OR subject:B`), then the same post-filter checks the subject

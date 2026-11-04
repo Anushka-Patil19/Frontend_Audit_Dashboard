@@ -1,4 +1,4 @@
-import type { Checkpoint, ProjectId } from "@/lib/audit-data";
+import { overallCompliancePct, type Checkpoint, type ProjectId } from "@/lib/audit-data";
 
 // Manager-view data for the POC, scoped to PIT Armour. Live parts are computed from the
 // real checkpoint state (project-a): compliance score, the heatmap's live column,
@@ -280,14 +280,7 @@ export function buildManagerView(checkpoints: Checkpoint[], pid: ProjectId = "pr
   const uatDone = cp38 ? passed(cp38) : false;
 
   // ── Compliance score (same formula as the CTO Home) ──
-  const score = Math.round(
-    (pit.reduce((sum, c) => {
-      if (c.kind === "automated") return sum + (c.status === "compliant" ? 1 : 0);
-      return sum + c.steps.filter((s) => s.state === "done").length / (c.steps.length || 1);
-    }, 0) /
-      (pit.length || 1)) *
-      100,
-  );
+  const score = overallCompliancePct(pit);
   const scoreTrend = [...SCORE_TREND_HISTORY, score];
 
   // ── Audit readiness (evidence captured = check passed with its evidence) ──

@@ -1,4 +1,12 @@
-import { Github, Mail, SquareKanban, FolderClosed, ArrowUpRight, RefreshCw } from "lucide-react";
+import {
+  Github,
+  Mail,
+  SquareKanban,
+  FolderClosed,
+  ArrowUpRight,
+  ArrowDownRight,
+  RefreshCw,
+} from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -39,25 +47,38 @@ export function Rollup({
   trendData?: { month: string; compliance: number; findings?: number }[];
 }) {
   const autoPct = Math.round((automated / (automated + manual || 1)) * 100);
-  const chartData = trendData ?? [
+  const history = trendData ?? [
     { month: "Apr", compliance: 61 },
     { month: "May", compliance: 64 },
     { month: "Jun", compliance: 68 },
     { month: "Jul", compliance: 71 },
     { month: "Aug", compliance: 74 },
-    { month: "Sep", compliance: compliance || 78 },
+    { month: "Sep", compliance: 78 },
   ];
+  // The latest point is always the live %, so the chart and the change badge
+  // move as soon as a checkpoint turns compliant.
+  const chartData = [...history.slice(0, -1), { ...history[history.length - 1], compliance }];
+  const delta =
+    Math.round((compliance - (chartData[chartData.length - 2]?.compliance ?? compliance)) * 10) / 10;
+  // Equal weightage: every checkpoint is worth the same share of the %.
+  const perCheckpoint = Math.round((100 / (automated + manual || 1)) * 100) / 100;
 
   return (
     <div className="flex flex-wrap border border-border bg-panel items-stretch">
       <StatCell label="Overall compliance">
         <div className="flex items-baseline gap-2">
           <span className="font-mono text-2xl text-foreground">{compliance}%</span>
-          <span className="inline-flex items-center text-xs text-ok">
-            <ArrowUpRight className="h-3.5 w-3.5" />
-            <Mono>+4</Mono>
+          <span className={`inline-flex items-center text-xs ${delta >= 0 ? "text-ok" : "text-fail"}`}>
+            {delta >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+            <Mono>
+              {delta >= 0 ? "+" : ""}
+              {delta}
+            </Mono>
           </span>
         </div>
+        <Mono className="mt-1 block text-faint">
+          {automated + manual} checkpoints · {perCheckpoint}% each
+        </Mono>
       </StatCell>
       <StatCell label="Automated vs manual">
         <div className="space-y-2">

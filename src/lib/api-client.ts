@@ -141,8 +141,15 @@ export type CrComplianceResult = {
   project_id: string;
   jira_ticket: string;
   outcome_id: CrOutcomeId;
+  /** Today's Jira status. */
   jira_status: string | null;
   jira_approved: boolean;
+  /** Jira's state when the PR was merged — what a merged PR is judged on. */
+  jira_status_at_merge: string | null;
+  jira_approved_at_merge: boolean | null;
+  jira_approved_by: string | null;
+  jira_approved_at: string | null;
+  approval_withdrawn_after_merge: boolean;
   required_merger: string | null;
   branch_found: boolean;
   pr_number: number | null;
@@ -192,6 +199,331 @@ export async function getCrEvidenceScreenshot({
   return apiFetchOrNull(
     `/api/cr-compliance/evidence?file_name=${encodeURIComponent(data.fileName)}`,
   );
+}
+
+// --- CP6 (change linked to an approved CR/Jira) ------------------------------
+
+export type Cp6Result = {
+  project_id: string;
+  jira_ticket: string;
+  outcome_id: "CP6-C" | "CP6-NC";
+  jira_status: string;
+  jira_summary: string | null;
+  jira_reporter: string | null;
+  jira_url: string;
+  /** Jira status screenshot — captured only when the ticket is approved. */
+  evidence_screenshot: string | null;
+  timestamp: string;
+};
+
+export type Cp6ProjectConfig = {
+  projectId: string;
+  projectLabel: string;
+  checkpointId: "CP6";
+  jiraTicket: string;
+  approvedStatus: string;
+  ledgerId: string;
+};
+
+export type Cp6VerifyResponse = {
+  config: Cp6ProjectConfig | null;
+  result: Cp6Result | null;
+  reply: string;
+};
+
+export async function runCp6Verification({
+  data,
+}: {
+  data: { question: string };
+}): Promise<Cp6VerifyResponse> {
+  return apiFetch("/api/cp6/verify", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getCp6EvidenceScreenshot({
+  data,
+}: {
+  data: { fileName: string };
+}): Promise<{ dataUrl: string } | null> {
+  return apiFetchOrNull(`/api/cp6/evidence?file_name=${encodeURIComponent(data.fileName)}`);
+}
+
+// --- CP20 (pull request mandatory for changes) ---------------------------------
+
+/** C compliant · CE compliant with exception · OBS observation · NC non-compliant · NE not evidenced */
+export type Cp20OutcomeId = "CP20-C" | "CP20-CE" | "CP20-OBS" | "CP20-NC" | "CP20-NE";
+export type Cp20FindingLevel = "nc" | "not_evidenced" | "observation" | "exception" | "info";
+
+export type Cp20Result = {
+  project_id: string;
+  repo: string;
+  repo_url: string;
+  outcome_id: Cp20OutcomeId;
+  findings: { level: Cp20FindingLevel; text: string }[];
+  counts: Record<"nc" | "not_evidenced" | "observation" | "exception", number>;
+  branches: {
+    branch: string;
+    readable: boolean;
+    protected: boolean;
+    pr_required: boolean;
+    admins_enforced: boolean;
+    force_push_blocked: boolean;
+    deletion_blocked: boolean;
+    source: string;
+  }[];
+  rule_start_date: string | null;
+  rule_start_source: string;
+  period_start: string;
+  commits: {
+    branch: string;
+    sha: string;
+    author: string | null;
+    date: string;
+    message: string;
+    pr_number: number | null;
+    pr_url: string | null;
+    pr_author: string | null;
+    merged_by: string | null;
+    merged_at: string | null;
+    reviewers: string[];
+    self_merged: boolean;
+    direct_push: boolean;
+    exception_id: string | null;
+  }[];
+  commits_before_rule_start: number;
+  history_events: {
+    branch: string;
+    type: string;
+    actor: string | null;
+    time: string;
+    sha: string | null;
+    exception_id: string | null;
+  }[];
+  exceptions_used: { id: string; reason: string; approver: string; expires: string }[];
+  evidence_file: string | null;
+  evidence_hash: string | null;
+  evidence_screenshot: string | null;
+  /** Append-only, hash-chained run log in backend/evidence. */
+  hash_log_file: string | null;
+  hash_log_entry: number | null;
+  hash_log_entry_hash: string | null;
+  timestamp: string;
+};
+
+export type Cp20Gates = {
+  protection: GateState;
+  commits: GateState;
+  history: GateState;
+  review: GateState;
+};
+
+export type Cp20VerifyResponse = {
+  config: { ledgerId: string; githubOwner: string; githubRepo: string } | null;
+  result: Cp20Result | null;
+  reply: string;
+  gates: Cp20Gates;
+};
+
+export async function runCp20Verification({
+  data,
+}: {
+  data: { question: string };
+}): Promise<Cp20VerifyResponse> {
+  return apiFetch("/api/cp20/verify", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getCp20EvidenceScreenshot({
+  data,
+}: {
+  data: { fileName: string };
+}): Promise<{ dataUrl: string } | null> {
+  return apiFetchOrNull(`/api/cp20/evidence?file_name=${encodeURIComponent(data.fileName)}`);
+}
+
+// --- GitHub tracking (live PRs, pushes, rules, deployments per project) --------
+
+export type TraceState = "passed" | "failed" | "warn" | "pending";
+export type TraceStep = {
+  key: "cr" | "jira" | "review" | "merge" | "deploy";
+  label: string;
+  state: TraceState;
+  title: string;
+  detail: string | null;
+  url: string | null;
+};
+export type PrFlag = { code: string; label: string; level: "fail" | "warn"; why: string };
+
+export type TrackedPr = {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "closed" | "merged";
+  author: string | null;
+  approvers: string[];
+  merged_by: string | null;
+  merged_at: string | null;
+  created_at: string;
+  base: string;
+  head: string;
+  cr_key: string | null;
+  jira: { status_now: string | null; status_at_merge: string | null; approved: boolean | null };
+  required_merger: string | null;
+  release: string | null;
+  flags: PrFlag[];
+  result: "fail" | "warn" | "clean";
+  trace: TraceStep[];
+};
+
+export type TrackedPush = {
+  repo: string;
+  branch: string;
+  sha: string | null;
+  url: string | null;
+  author: string | null;
+  date: string | null;
+  message: string;
+  kind: string;
+};
+
+export type TrackedRule = {
+  repo: string;
+  branch: string;
+  readable: boolean;
+  protected: boolean;
+  pr_required: boolean;
+  admins_enforced: boolean;
+  force_push_blocked: boolean;
+  deletion_blocked: boolean;
+  source: string;
+  gaps: string[];
+};
+
+export type TrackedDeployment = {
+  id: number;
+  repo: string;
+  environment: string | null;
+  sha: string | null;
+  ref: string | null;
+  creator: string | null;
+  created_at: string | null;
+  status: string | null;
+  tag: string | null;
+  in_window: boolean | null;
+};
+
+export type TrackingKpis = {
+  open_prs: number;
+  flagged_prs: number;
+  bypassed_pushes: number;
+  rule_gaps: number;
+  deploys_to_check: number;
+  deploys_outside_window: number;
+  deploys_without_tag: number;
+};
+
+export type ProjectTracking = {
+  project_id: string;
+  name: string;
+  connected: boolean;
+  repos: { repo: string; url: string | null; error: string | null }[];
+  kpis: TrackingKpis;
+  prs: TrackedPr[];
+  pushes: TrackedPush[];
+  rules: TrackedRule[];
+  deployments: TrackedDeployment[];
+  fetched_at: string;
+};
+
+export type TrackingSummary = {
+  project_id: string;
+  name: string;
+  connected: boolean;
+  repos: string[];
+  kpis: TrackingKpis;
+  flagged: number;
+  top: { kind: "pr" | "push"; text: string; label: string; level: "fail" | "warn" }[];
+};
+
+export async function getGithubTrackingSummary(refresh = false): Promise<TrackingSummary[]> {
+  return apiFetch(`/api/github-tracking/summary${refresh ? "?refresh=true" : ""}`);
+}
+
+export async function getProjectTracking(projectId: string, refresh = false): Promise<ProjectTracking> {
+  return apiFetch(`/api/github-tracking/${encodeURIComponent(projectId)}${refresh ? "?refresh=true" : ""}`);
+}
+
+// --- CP40 (production deployment approval: Jira ticket + attached email) ------
+
+export type Cp40OutcomeId = "CP40-C" | "CP40-Pending" | "CP40-NC" | "CP40-Manual";
+
+export type Cp40Result = {
+  project_id: string;
+  jira_ticket: string;
+  jira_url: string;
+  outcome_id: Cp40OutcomeId;
+  /** Every rule that failed / what is missing, in plain words. */
+  reasons: string[];
+  jira_status: string;
+  approver_name: string | null;
+  approver_email: string | null;
+  attachment_name: string | null;
+  attachment_author: string | null;
+  attachment_sha256: string | null;
+  email_from: string | null;
+  email_date: string | null;
+  email_subject: string | null;
+  email_excerpt: string | null;
+  llm_approved: boolean | null;
+  llm_confidence: number | null;
+  llm_reason: string | null;
+  /** Stored copy of the approval file (Compliant only). */
+  evidence_file: string | null;
+  /** Jira ticket screenshot (Compliant only). */
+  evidence_screenshot: string | null;
+  comment_posted: boolean;
+  timestamp: string;
+};
+
+export type Cp40GateStatus = {
+  ticket: GateState;
+  approver: GateState;
+  attachment: GateState;
+  content: GateState;
+};
+
+export type Cp40ProjectConfig = {
+  projectId: string;
+  projectLabel: string;
+  checkpointId: "CP40";
+  jiraTicket: string;
+  approvedStatus: string;
+  stepName: string;
+  authorizedApprovers: string[];
+  deploymentAt: string | null;
+  ledgerId: string;
+};
+
+export type Cp40VerifyResponse = {
+  config: Cp40ProjectConfig | null;
+  result: Cp40Result | null;
+  reply: string;
+  gates: Cp40GateStatus;
+};
+
+export async function runCp40Verification({
+  data,
+}: {
+  data: { question: string };
+}): Promise<Cp40VerifyResponse> {
+  return apiFetch("/api/cp40/verify", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getCp40EvidenceScreenshot({
+  data,
+}: {
+  data: { fileName: string };
+}): Promise<{ dataUrl: string } | null> {
+  return apiFetchOrNull(`/api/cp40/evidence?file_name=${encodeURIComponent(data.fileName)}`);
 }
 
 // --- Mail connector ----------------------------------------------------

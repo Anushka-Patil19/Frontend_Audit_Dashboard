@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { ChevronRight, FileCode2, CircleCheck, CircleX } from "lucide-react";
 import type { AutomatedCheckpoint, AutoStatus } from "@/lib/audit-data";
-import { getCheckpointProjectId, statusTone } from "@/lib/audit-data";
+import { baseCheckpointId, getCheckpointProjectId, statusTone } from "@/lib/audit-data";
 import { useAudit } from "@/lib/audit-store";
 import { useEscalations } from "@/lib/escalation-store";
 import { EvidenceScreenshot, HistoryStrip, Mono, SourceBadge, StatusPill, tone } from "./atoms";
 import { EscalationEvidenceScreenshot } from "./EscalationEvidenceScreenshot";
 import { Cp10VerticalProgress } from "./Cp10VerticalProgress";
 import { CrComplianceProgress } from "./CrComplianceProgress";
+import { Cp6Progress } from "./Cp6Progress";
+import { Cp40Progress } from "./Cp40Progress";
+import { Cp20Progress } from "./Cp20Progress";
 import { DependencyEvidence } from "./DependencyEvidence";
 
 type Props = {
@@ -26,16 +29,69 @@ export function AutomatedCard({ cp, onResolve }: Props) {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [action, setAction] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  const { cp10Gates, cp10Result, undoCp10Gate, crGates, crResult, undoCrVerification } = useAudit();
+  const {
+    cp10Gates,
+    cp10Result,
+    undoCp10Gate,
+    crGates,
+    crResult,
+    undoCrVerification,
+    cp6Result,
+    undoCp6Verification,
+    cp40Gates,
+    cp40Result,
+    undoCp40Verification,
+    cp20Gates,
+    cp20Result,
+    undoCp20Verification,
+  } = useAudit();
   const { items: escalationItems } = useEscalations();
   const t = tone[statusTone[cp.status]];
+  const isCp6 = cp.id === "cp-6";
+  const isCp20 = cp.id === "cp-20";
+  const isCp40 = cp.id === "cp-40";
   const isCp10 = cp.id === "cp-10";
+  // Once CP6 has been checked against Jira, the approval box shows that result
+  // instead of the static seed approver.
+  const cp20Merge = cp20Result?.commits.find((c) => c.pr_number);
+  const approver =
+    isCp20 && cp20Result
+      ? {
+          name: cp20Merge?.merged_by ?? "No merged PR",
+          role: cp20Merge ? `merged PR #${cp20Merge.pr_number}` : cp20Result.repo,
+          valid: cp20Result.outcome_id === "CP20-C" || cp20Result.outcome_id === "CP20-CE",
+          note:
+            cp20Result.findings.find((f) => f.level !== "info" && f.level !== "exception")?.text ??
+            "Every change reached the protected branches through a merged pull request",
+        }
+      : isCp40 && cp40Result
+      ? {
+          name: cp40Result.approver_name ?? "Not found",
+          role: cp40Result.jira_ticket,
+          valid: cp40Result.outcome_id === "CP40-C",
+          note:
+            cp40Result.outcome_id === "CP40-C"
+              ? "Approved in Jira and confirmed by the attached approval email"
+              : (cp40Result.reasons[0] ?? "Not verified"),
+        }
+      : isCp6 && cp6Result
+      ? {
+          name: cp6Result.jira_reporter ?? "Jira",
+          role: cp6Result.jira_ticket,
+          valid: cp6Result.outcome_id === "CP6-C",
+          note:
+            cp6Result.outcome_id === "CP6-C"
+              ? `CR approved in Jira (${cp6Result.jira_status})`
+              : `CR not approved — Jira status is ${cp6Result.jira_status}`,
+        }
+      : cp.approver;
   const isCr = cp.id === "cp-18";
   const isCp16 = cp.id === "cp-16";
   const approvalEvidence = escalationItems.find(
     (item) =>
       item.projectId === (cp.projectId ?? getCheckpointProjectId(cp.id)) &&
-      item.checkpointId === cp.id &&
+      // Escalation items name the checklist item ("cp-25") plus a project; match any project's copy.
+      item.checkpointId === baseCheckpointId(cp.id) &&
       item.status === "compliant" &&
       item.approval?.evidenceFile,
   )?.approval;
@@ -120,7 +176,90 @@ export function AutomatedCard({ cp, onResolve }: Props) {
 
           {evidenceOpen && (
             <div className="border border-border bg-panel-2">
-              {approvalEvidence?.evidenceFile ? (
+              {/* For CP6, Jira is the source of truth: once checked, its result wins over
+                  any escalation approval record, so a non-approved CR shows no screenshot. */}
+              {isCp20 && cp20Result ? (
+                <>
+                  <div className="border-b border-border px-3 py-1.5">
+                    <Mono className="text-faint">
+                      {cp20Result.evidence_file ?? "PR rule evidence"} · SHA-256{" "}
+                      {cp20Result.evidence_hash?.slice(0, 16)}…
+                    </Mono>
+                  </div>
+                  <div className="px-3 py-3">
+                    {(cp20Result.outcome_id === "CP20-C" || cp20Result.outcome_id === "CP20-CE") &&
+                    cp20Result.evidence_screenshot ? (
+                      <EvidenceScreenshot
+                        fileName={cp20Result.evidence_screenshot}
+                        source="cp20"
+                        label="View pull request rule evidence"
+                        alt={`Pull request rule check for ${cp20Result.repo}`}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No evidence image — the PR rule isn't met yet. The flows below show what failed; every run is still
+                        recorded in {cp20Result.hash_log_file ?? "the hash log"}.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : isCp40 && cp40Result ? (
+                <>
+                  <div className="border-b border-border px-3 py-1.5">
+                    <Mono className="text-faint">
+                      {cp40Result.jira_ticket} production approval —{" "}
+                      {cp40Result.outcome_id === "CP40-C" ? "Compliant" : "no evidence yet"}
+                    </Mono>
+                  </div>
+                  <div className="space-y-1 px-3 py-3 text-xs">
+                    {cp40Result.outcome_id === "CP40-C" ? (
+                      <>
+                        <p className="text-muted-foreground">
+                          Stored file <Mono className="text-foreground">{cp40Result.evidence_file}</Mono>
+                        </p>
+                        <p className="text-muted-foreground">
+                          SHA-256{" "}
+                          <Mono className="break-all text-faint">{cp40Result.attachment_sha256}</Mono>
+                        </p>
+                        {cp40Result.evidence_screenshot && (
+                          <EvidenceScreenshot
+                            fileName={cp40Result.evidence_screenshot}
+                            source="cp40"
+                            label="View Jira approval screenshot"
+                            alt={`Screenshot of ${cp40Result.jira_ticket} approved in Jira`}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground">
+                        No evidence — the production approval isn't proven yet. See the check below.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : isCp6 && cp6Result ? (
+                <>
+                  <div className="border-b border-border px-3 py-1.5">
+                    <Mono className="text-faint">
+                      {cp6Result.jira_ticket} Jira status — {cp6Result.jira_status}
+                    </Mono>
+                  </div>
+                  <div className="px-3 py-3">
+                    {cp6Result.evidence_screenshot ? (
+                      <EvidenceScreenshot
+                        fileName={cp6Result.evidence_screenshot}
+                        source="cp6"
+                        label="View Jira approval screenshot"
+                        alt={`Screenshot of ${cp6Result.jira_ticket} with status ${cp6Result.jira_status} in Jira`}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No evidence — the CR isn't approved in Jira yet.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : approvalEvidence?.evidenceFile ? (
                 <div className="px-3 py-3">
                   <EscalationEvidenceScreenshot
                     fileName={approvalEvidence.evidenceFile}
@@ -164,6 +303,24 @@ export function AutomatedCard({ cp, onResolve }: Props) {
             </div>
           )}
 
+          {isCp6 && <Cp6Progress result={cp6Result} onUndo={() => undoCp6Verification(cp.id)} />}
+
+          {isCp20 && (
+            <Cp20Progress
+              gates={cp20Gates}
+              result={cp20Result}
+              onUndo={() => undoCp20Verification(cp.id)}
+            />
+          )}
+
+          {isCp40 && (
+            <Cp40Progress
+              gates={cp40Gates}
+              result={cp40Result}
+              onUndo={() => undoCp40Verification(cp.id)}
+            />
+          )}
+
           {isCp10 && (
             <Cp10VerticalProgress
               gates={cp10Gates}
@@ -182,19 +339,19 @@ export function AutomatedCard({ cp, onResolve }: Props) {
 
           <div className="border border-border bg-panel-2 px-3 py-2.5">
             <p className="mb-1.5 text-[11px] text-faint">Approval authorization</p>
-            {cp.approver ? (
+            {approver ? (
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span>{cp.approver.name}</span>
-                <Mono className="text-faint">{cp.approver.role}</Mono>
+                <span>{approver.name}</span>
+                <Mono className="text-faint">{approver.role}</Mono>
                 <span
-                  className={`inline-flex items-center gap-1.5 text-xs ${cp.approver.valid ? "text-ok" : "text-fail"}`}
+                  className={`inline-flex items-center gap-1.5 text-xs ${approver.valid ? "text-ok" : "text-fail"}`}
                 >
-                  {cp.approver.valid ? (
+                  {approver.valid ? (
                     <CircleCheck className="h-3.5 w-3.5" />
                   ) : (
                     <CircleX className="h-3.5 w-3.5" />
                   )}
-                  {cp.approver.note}
+                  {approver.note}
                 </span>
               </div>
             ) : (

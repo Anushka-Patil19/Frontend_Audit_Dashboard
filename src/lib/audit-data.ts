@@ -44,7 +44,28 @@ export const projectsData: Record<ProjectId, ProjectInfo> = {
   },
 };
 
+export const PROJECT_IDS: ProjectId[] = ["project-a", "project-b", "project-c"];
+
+// Every project carries all 85 checklist items. PIT Armour (project-a) keeps the
+// plain ids ("cp-6") that the live checks are wired to; the other projects'
+// copies are suffixed with their project ("cp-6@project-b").
+export function projectCheckpointId(baseId: string, pid: ProjectId): string {
+  return pid === "project-a" ? baseId : `${baseId}@${pid}`;
+}
+
+/** The checklist item an id refers to, whatever project it belongs to ("cp-6@project-b" → "cp-6"). */
+export function baseCheckpointId(cpId: string): string {
+  return cpId.split("@")[0]!;
+}
+
 export function getCheckpointProjectId(cpId: string): ProjectId {
+  const pid = cpId.split("@")[1];
+  return pid && (PROJECT_IDS as string[]).includes(pid) ? (pid as ProjectId) : "project-a";
+}
+
+// Which project each seeded demo status was written for. A checkpoint keeps its
+// seeded status only in that project; everywhere else it starts unverified.
+function seedOwnerProject(cpId: string): ProjectId {
   const num = parseInt(cpId.replace("cp-", ""), 10) || 1;
   // Specific findings assignment:
   // PIT Armour (3 findings, 1 high):
@@ -58,6 +79,11 @@ export function getCheckpointProjectId(cpId: string): ProjectId {
   if (num <= 24 || (num >= 30 && num <= 45)) return "project-a";
   if ((num >= 51 && num <= 65) || (num >= 76 && num <= 80)) return "project-b";
   return "project-c";
+}
+
+/** The module (category folder) a checkpoint belongs to, for any project's copy. */
+export function moduleOf(cpId: string): string | undefined {
+  return checkpointModule[baseCheckpointId(cpId)];
 }
 
 export function getCheckpointProjectName(cpId: string): ProjectName {
@@ -111,9 +137,15 @@ export type StepEvidence = {
   uploadedAt: string;
 };
 
+/** Checkpoints whose evidence is the mail screenshot captured by verification (like CP10), not a manual upload. */
+/** Their steps complete only when the email is verified, never by a manual "Mark done". */
+const MAIL_VERIFIED_CHECKPOINTS = new Set(["cp-38"]);
+
+export const isMailVerifiedCheckpoint = (cpId: string) => MAIL_VERIFIED_CHECKPOINTS.has(cpId);
+
 /** Steps that attach documentation can only be marked done once an image is uploaded. */
-export const stepRequiresEvidence = (step: Pick<ManualStep, "name">) =>
-  /attach/i.test(step.name);
+export const stepRequiresEvidence = (cpId: string, step: Pick<ManualStep, "name">) =>
+  !isMailVerifiedCheckpoint(cpId) && /attach/i.test(step.name);
 
 export type Comment = { author: string; at: string; text: string };
 
@@ -138,6 +170,20 @@ export type ManualCheckpoint = {
 };
 
 export type Checkpoint = AutomatedCheckpoint | ManualCheckpoint;
+
+// One rule for "completed", shared by every compliance figure in the app (module
+// pointers like 3/5, project %, CTO Home, Manager view): automated → Compliant,
+// manual → every step done. No partial credit, so each pointer weighs the same.
+export function isCheckpointDone(c: Checkpoint): boolean {
+  return c.kind === "automated" ? c.status === "compliant" : c.steps.every((s) => s.state === "done");
+}
+
+// Compliance % = completed ÷ all × 100, to one decimal. Every checkpoint is worth
+// exactly 100 ÷ total, so each one that completes moves the % by the same amount.
+export function overallCompliancePct(checkpoints: Checkpoint[]): number {
+  if (!checkpoints.length) return 0;
+  return Math.round((checkpoints.filter(isCheckpointDone).length / checkpoints.length) * 1000) / 10;
+}
 
 export const statusLabel: Record<Status, string> = {
   compliant: "Compliant",
@@ -344,7 +390,8 @@ const rawInitialCheckpoints: Checkpoint[] = [
     auditEvidence: "JIRA Ticket",
     sources: ["jira"],
     sourceLabel: "Jira",
-    status: "compliant",
+    // Starts Non-compliant; the live Jira check (applyCp6) turns it Compliant once POC-7 is Approved.
+    status: "non-compliant",
     confidence: 100,
     syncedMinutesAgo: 45,
     stale: false,
@@ -757,12 +804,14 @@ const rawInitialCheckpoints: Checkpoint[] = [
     auditEvidence: "PR History",
     sources: ["github"],
     sourceLabel: "GitHub",
-    status: "compliant",
+    // Starts Non-compliant; the live GitHub check (applyCp20) sets the real status.
+    status: "non-compliant",
     confidence: 100,
     syncedMinutesAgo: 33,
     stale: false,
-    detail: "Verified against " + "PR History" + " owned by " + "Developer" + ".",
-    entity: "REF-20 · " + "PR History",
+    detail:
+      "Every commit on the protected branches reaches them through a merged pull request, under a rule enforced for admins that blocks force pushes and deletions.",
+    entity: "Anushka34567/Github_integration · main",
     evidenceFile: "evidence_20_" + "pr-history" + ".json",
     evidence: JSON.stringify({
       itemNumber: 20,
@@ -1369,14 +1418,16 @@ const rawInitialCheckpoints: Checkpoint[] = [
     category: "Deployment",
     ownerRole: "CAB",
     auditEvidence: "Deployment Ticket",
-    sources: ["mail"],
-    sourceLabel: "Mail",
-    status: "compliant",
+    sources: ["jira"],
+    sourceLabel: "Jira",
+    // Starts Non-compliant; the live Jira + attached-email check (applyCp40) sets the real status.
+    status: "non-compliant",
     confidence: 100,
     syncedMinutesAgo: 8,
     stale: false,
-    detail: "Verified against " + "Deployment Ticket" + " owned by " + "CAB" + ".",
-    entity: "REF-40 · " + "Deployment Ticket",
+    detail:
+      "Production approval on Jira POC-8: approved by an authorised person, who attaches the approval email (.eml, .msg or .txt) to the ticket.",
+    entity: "POC-8 · " + "Deployment Ticket",
     evidenceFile: "evidence_40_" + "deployment-ticket" + ".json",
     evidence: JSON.stringify({
       itemNumber: 40,
@@ -2691,14 +2742,181 @@ const rawInitialCheckpoints: Checkpoint[] = [
   }
 ];
 
-export const initialCheckpoints: Checkpoint[] = rawInitialCheckpoints.map((cp) => {
-  const pId = getCheckpointProjectId(cp.id);
+// Manual (M) / Automated (A) for each checklist item, from the "Manual/ Auto"
+// column of Audit Template 2 (Sheet2).csv. This — not the seed entries above —
+// decides whether a checkpoint runs the manual flow or an automated check.
+export const CHECKLIST_MODE: Record<string, "A" | "M"> = {
+  "cp-1": "M",
+  "cp-2": "M",
+  "cp-3": "M",
+  "cp-4": "M",
+  "cp-5": "A",
+  "cp-6": "A",
+  "cp-7": "A",
+  "cp-8": "A",
+  "cp-9": "A",
+  "cp-10": "A",
+  "cp-11": "A",
+  "cp-12": "A",
+  "cp-13": "A",
+  "cp-14": "A",
+  "cp-15": "A",
+  "cp-16": "A",
+  "cp-17": "A",
+  "cp-18": "A",
+  "cp-19": "A",
+  "cp-20": "A",
+  "cp-21": "A",
+  "cp-22": "A",
+  "cp-23": "A",
+  "cp-24": "A",
+  "cp-25": "A",
+  "cp-26": "A",
+  "cp-27": "A",
+  "cp-28": "M",
+  "cp-29": "A",
+  "cp-30": "M",
+  "cp-31": "M",
+  "cp-32": "A",
+  "cp-33": "A",
+  "cp-34": "A",
+  "cp-35": "A",
+  "cp-36": "A",
+  "cp-37": "A",
+  "cp-38": "A",
+  "cp-39": "A",
+  "cp-40": "A",
+  "cp-41": "A",
+  "cp-42": "M",
+  "cp-43": "M",
+  "cp-44": "M",
+  "cp-45": "M",
+  "cp-46": "M",
+  "cp-47": "M",
+  "cp-48": "A",
+  "cp-49": "A",
+  "cp-50": "M",
+  "cp-51": "M",
+  "cp-52": "M",
+  "cp-53": "M",
+  "cp-54": "M",
+  "cp-55": "M",
+  "cp-56": "M",
+  "cp-57": "M",
+  "cp-58": "A",
+  "cp-59": "A",
+  "cp-60": "A",
+  "cp-61": "M",
+  "cp-62": "M",
+  "cp-63": "M",
+  "cp-64": "M",
+  "cp-65": "M",
+  "cp-66": "M",
+  "cp-67": "M",
+  "cp-68": "A",
+  "cp-69": "A",
+  "cp-70": "M",
+  "cp-71": "M",
+  "cp-72": "M",
+  "cp-73": "A",
+  "cp-74": "A",
+  "cp-75": "M",
+  "cp-76": "A",
+  "cp-77": "M",
+  "cp-78": "M",
+  "cp-79": "M",
+  "cp-80": "M",
+  "cp-81": "M",
+  "cp-82": "M",
+  "cp-83": "M",
+  "cp-84": "M",
+  "cp-85": "M",
+};
+
+const SLUG_RE = /[^a-z0-9]+/g;
+
+// A manual checkpoint that hasn't started: the same two-step flow as #3
+// "Approved SOP" — verify the evidence, then sign off with an attached image.
+function freshManual(cp: Checkpoint): ManualCheckpoint {
   return {
-    ...cp,
-    projectId: pId,
-    projectName: projectsData[pId].name,
+    kind: "manual",
+    id: cp.id,
+    ref: cp.ref,
+    name: cp.name,
+    category: cp.category,
+    ownerRole: cp.ownerRole,
+    auditEvidence: cp.auditEvidence,
+    sources: cp.sources,
+    sourceLabel: cp.sourceLabel,
+    status: "manual-waiting",
+    waitingOn: cp.ownerRole,
+    steps: [
+      { name: "Verify " + cp.auditEvidence, role: cp.ownerRole, state: "pending" },
+      { name: "Sign-off and attach documentation", role: cp.ownerRole, state: "locked" },
+    ],
+    comments: [],
+    history: [{ at: "Today 08:30", text: `Manual checkpoint — waiting for ${cp.ownerRole} to verify ${cp.auditEvidence}.` }],
   };
-});
+}
+
+// An automated checkpoint that hasn't been verified yet.
+function freshAutomated(cp: Checkpoint): AutomatedCheckpoint {
+  const num = cp.ref.replace("#", "");
+  return {
+    kind: "automated",
+    id: cp.id,
+    ref: cp.ref,
+    name: cp.name,
+    category: cp.category,
+    ownerRole: cp.ownerRole,
+    auditEvidence: cp.auditEvidence,
+    sources: cp.sources,
+    sourceLabel: cp.sourceLabel,
+    status: "needs-review",
+    confidence: 0,
+    syncedMinutesAgo: 0,
+    stale: false,
+    detail: `Automated check against ${cp.auditEvidence} owned by ${cp.ownerRole} — not verified yet.`,
+    entity: `REF-${num} · ${cp.auditEvidence}`,
+    evidenceFile: `evidence_${num}_${cp.auditEvidence.toLowerCase().replace(SLUG_RE, "-")}.json`,
+    evidence: JSON.stringify(
+      {
+        itemNumber: Number(num),
+        category: cp.category,
+        requirement: cp.name,
+        ownerRole: cp.ownerRole,
+        auditEvidence: cp.auditEvidence,
+        verificationState: "not-verified",
+      },
+      null,
+      2,
+    ),
+    history: [{ at: "Today 08:30", text: `Automated check — awaiting first verification against ${cp.auditEvidence}.` }],
+  };
+}
+
+// The checklist item as it appears in project pid. It keeps its seeded state
+// only in the project it was seeded for, and only if its Manual/Auto mode still
+// matches the CSV; otherwise it starts fresh (not started / not verified).
+function checkpointForProject(seed: Checkpoint, pid: ProjectId): Checkpoint {
+  // #38's seed is PIT Armour's live, mail-verified UAT sign-off; other projects get the generic item.
+  let base: Checkpoint = seed;
+  if (seed.id === "cp-38" && pid !== "project-a" && seed.kind === "manual") {
+    const { ownerEmail: _pitSigner, ...generic } = seed;
+    base = { ...generic, name: "Business UAT sign-off obtained" };
+  }
+  const cp = { ...base, id: projectCheckpointId(seed.id, pid) } as Checkpoint;
+  // #38 in PIT Armour stays as seeded: its steps are completed by the live sign-off email check.
+  const liveMailVerified = seed.id === "cp-38" && pid === "project-a";
+  const mode = CHECKLIST_MODE[seed.id] === "M" ? "manual" : "automated";
+  const keepSeed = liveMailVerified || (seedOwnerProject(seed.id) === pid && seed.kind === mode);
+  const shaped = keepSeed ? cp : mode === "manual" ? freshManual(cp) : freshAutomated(cp);
+  return { ...shaped, projectId: pid, projectName: projectsData[pid].name };
+}
+
+export const initialCheckpoints: Checkpoint[] = PROJECT_IDS.flatMap((pid) =>
+  rawInitialCheckpoints.map((seed) => checkpointForProject(seed, pid)),
+);
 
 export type ConnectorState = "healthy" | "stale" | "failed";
 

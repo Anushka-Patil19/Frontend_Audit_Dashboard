@@ -7,6 +7,7 @@ import {
   ScrollText,
   LogOut,
   Timer,
+  Github,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-store";
 import { useRole } from "@/lib/role-store";
@@ -16,6 +17,7 @@ const nav = [
   { to: "/projects", label: "Projects", icon: FolderKanban, group: "Compliance" },
   { to: "/findings", label: "Findings", icon: AlertTriangle, group: "Compliance" },
   { to: "/escalations", label: "Escalations", icon: Timer, group: "Compliance" },
+  { to: "/github", label: "GitHub", icon: Github, group: "Compliance" },
   { to: "/connectors", label: "Connectors", icon: Plug, group: "Compliance" },
   { to: "/activity", label: "Activity", icon: ScrollText, group: "Compliance" },
 ] as const;

@@ -109,7 +109,7 @@ export const PROJECT_RULES: Rule[] = [
     rule: "UAT sign-off by Anushka Patil after deployment",
     process: "#38 UAT sign-off",
     detail:
-      'A sign-off email from the authorised business signer with the subject "PIT Armour UAT Sign-off".',
+      'A sign-off email from the authorised business signer that says "signed off" in its subject or body.',
   },
 ];
 

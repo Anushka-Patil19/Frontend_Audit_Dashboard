@@ -61,9 +61,19 @@ export function CrComplianceProgress({
 
       {result && (
         <div className="space-y-1 border-t border-border pt-2 text-xs">
-          <p className="text-muted-foreground">
-            Jira status <Mono className="text-foreground">{result.jira_status}</Mono>
-          </p>
+          {result.pr_merged && result.jira_approved_at_merge != null ? (
+            <p className={result.jira_approved_at_merge ? "text-ok" : "text-fail"}>
+              Jira at merge time <Mono>{result.jira_status_at_merge}</Mono>
+              {result.jira_approved_at_merge && result.jira_approved_by && <> · approved by {result.jira_approved_by}</>}
+              {result.approval_withdrawn_after_merge && (
+                <span className="text-warn"> · now {result.jira_status} (changed after the merge)</span>
+              )}
+            </p>
+          ) : (
+            <p className="text-muted-foreground">
+              Jira status <Mono className="text-foreground">{result.jira_status}</Mono>
+            </p>
+          )}
           {result.pr_number != null && (
             <p className="text-muted-foreground">
               PR #{result.pr_number} ·{" "}
@@ -81,12 +91,12 @@ export function CrComplianceProgress({
               href={result.pr_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-block text-primary hover:underline"
+              className="block text-primary hover:underline"
             >
               View pull request
             </a>
           )}
-          {result.evidence_screenshot && (
+          {result.outcome_id === "CR-C" && result.evidence_screenshot && (
             <EvidenceScreenshot
               fileName={result.evidence_screenshot}
               source="cr"

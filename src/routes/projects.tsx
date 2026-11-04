@@ -16,7 +16,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import {
-  checkpointModule,
+  moduleOf,
   modules,
   projectComplianceTrends,
   statusLabel,
@@ -27,7 +27,7 @@ import {
 import { useAudit } from "@/lib/audit-store";
 import { AutomatedCard } from "@/components/audit/AutomatedCard";
 import { ManualCard } from "@/components/audit/ManualCard";
-import { ModuleGrid } from "@/components/audit/ModuleGrid";
+import { ModuleGrid, overallCompliancePct } from "@/components/audit/ModuleGrid";
 import { AuditReportModal } from "@/components/audit/AuditReportModal";
 import { AddProjectModal } from "@/components/audit/AddProjectModal";
 import { DependencyBell } from "@/components/audit/DependencyBell";
@@ -157,18 +157,32 @@ function ProjectsPage() {
     setIsOnboarded(false);
   };
 
-  const automatedCount = checkpoints.filter((c) => c.kind === "automated").length;
-  const manualCount = checkpoints.length - automatedCount;
   const healthy = connectors.filter((c) => c.state === "healthy").length;
 
-  const projectScore = checkpoints.reduce((sum, c) => {
-    if (c.kind === "automated") return sum + (c.status === "compliant" ? 1 : 0);
-    return sum + c.steps.filter((s) => s.state === "done").length / (c.steps.length || 1);
-  }, 0);
-  const projectCompliancePct = Math.round((projectScore / (checkpoints.length || 1)) * 100);
-  const attentionCount = checkpoints.filter(
-    (c) => c.status === "non-compliant" || c.status === "needs-review",
-  ).length;
+  // Every project's numbers come from its own checkpoints, with the same
+  // equal-weight "completed" rule as the module pointers.
+  const statsByProject = useMemo(() => {
+    const stats = (pid: ProjectId) => {
+      const list = checkpoints.filter((c) => c.projectId === pid);
+      const automated = list.filter((c) => c.kind === "automated").length;
+      const attention = list.filter(
+        (c) => c.status === "non-compliant" || c.status === "needs-review",
+      ).length;
+      return {
+        compliancePct: overallCompliancePct(list),
+        checkpointsCount: list.length,
+        automatedCount: automated,
+        manualCount: list.length - automated,
+        status: (attention > 0 ? "attention" : "healthy") as ProjectMeta["status"],
+        attentionCount: attention,
+      };
+    };
+    return {
+      "project-a": stats("project-a"),
+      "project-b": stats("project-b"),
+      "project-c": stats("project-c"),
+    };
+  }, [checkpoints]);
 
   const rawProjectsList: ProjectMeta[] = useMemo(
     () => [
@@ -179,18 +193,13 @@ function ProjectsPage() {
         businessUnit: "Enterprise",
         description:
           "Production IT Armour Platform — Core Banking & Financial Systems Governance covering Application Governance, Change Management, Secure SDLC, Access Control, and Continuous Verification.",
-        compliancePct: projectCompliancePct,
-        checkpointsCount: checkpoints.length,
-        automatedCount: automatedCount,
-        manualCount: manualCount,
+        ...statsByProject["project-a"],
         submodules: [
           "Application Governance",
           "Change Management",
           "Secure SDLC",
           "Access Control",
         ],
-        status: attentionCount > 0 ? "attention" : "healthy",
-        attentionCount,
         isMain: true,
       },
       {
@@ -200,12 +209,8 @@ function ProjectsPage() {
         businessUnit: "Operation",
         description:
           "SAATHI — Merchant Payment Gateway & Digital Financial Services: IAM policies, API security controls, and transaction compliance.",
-        compliancePct: 91,
-        checkpointsCount: 12,
-        automatedCount: 10,
-        manualCount: 2,
+        ...statsByProject["project-b"],
         submodules: ["Payment Security", "IAM", "API Gateway", "Transaction Logs"],
-        status: "healthy",
       },
       {
         id: "project-c",
@@ -214,15 +219,11 @@ function ProjectsPage() {
         businessUnit: "FnA",
         description:
           "MPS — Risk Analytics & BI Cloud Data Platform: Snowflake pipeline compliance, PII masking rules, and access authorization.",
-        compliancePct: 82,
-        checkpointsCount: 8,
-        automatedCount: 6,
-        manualCount: 2,
+        ...statsByProject["project-c"],
         submodules: ["Data Governance", "PII Masking", "Access Logs", "Risk Models"],
-        status: "healthy",
       },
     ],
-    [checkpoints.length, automatedCount, manualCount, projectCompliancePct, attentionCount],
+    [statsByProject],
   );
 
   const projectsList = useMemo(() => {
@@ -231,6 +232,13 @@ function ProjectsPage() {
     }
     return rawProjectsList;
   }, [rawProjectsList, isOnboarded]);
+
+  // Directory KPIs from the listed projects: each project counts equally in the average.
+  const averageCompliance = projectsList.length
+    ? Math.round((projectsList.reduce((s, p) => s + p.compliancePct, 0) / projectsList.length) * 10) / 10
+    : 0;
+  const totalAutomated = projectsList.reduce((s, p) => s + p.automatedCount, 0);
+  const totalFindings = projectsList.reduce((s, p) => s + (p.attentionCount ?? 0), 0);
 
   const filteredProjects = useMemo(() => {
     return projectsList.filter((p) => {
@@ -259,9 +267,16 @@ function ProjectsPage() {
   const selectedProjectMeta =
     projectsList.find((p) => p.id === activeProjectId) ?? projectsList[0] ?? null;
 
+  // Inside a project, only that project's own checkpoints are shown and counted.
+  const projectCheckpoints = useMemo(
+    () => checkpoints.filter((c) => c.projectId === selectedProjectMeta?.id),
+    [checkpoints, selectedProjectMeta?.id],
+  );
+
   const moduleCheckpoints = useMemo(
-    () => (openModule ? checkpoints.filter((c) => checkpointModule[c.id] === openModule) : []),
-    [checkpoints, openModule],
+    () =>
+      openModule ? projectCheckpoints.filter((c) => moduleOf(c.id) === openModule) : [],
+    [projectCheckpoints, openModule],
   );
 
   const allEvidence = useMemo(
@@ -308,6 +323,8 @@ function ProjectsPage() {
   const visibleModules = modules.filter(
     (m) =>
       !openModule &&
+      // Only modules this project actually has checkpoints in.
+      projectCheckpoints.some((c) => moduleOf(c.id) === m.key) &&
       (!moduleQuery || `${m.name} ${m.submodules.join(" ")}`.toLowerCase().includes(moduleQuery)),
   );
 
@@ -362,8 +379,8 @@ function ProjectsPage() {
               </span>
               <p className="min-w-0 truncate text-xs text-muted-foreground">Average Compliance</p>
             </div>
-            <p className="mt-3 font-mono text-2xl text-ok">80%</p>
-            <Mono className="mt-1 block text-faint">+3% across all projects</Mono>
+            <p className="mt-3 font-mono text-2xl text-ok">{averageCompliance}%</p>
+            <Mono className="mt-1 block text-faint">across {projectsList.length} projects</Mono>
           </div>
 
           <div className="rounded-xl border border-border bg-panel p-4 shadow-card">
@@ -373,7 +390,7 @@ function ProjectsPage() {
               </span>
               <p className="min-w-0 truncate text-xs text-muted-foreground">Automated Checks</p>
             </div>
-            <p className="mt-3 font-mono text-2xl text-foreground">{automatedCount}</p>
+            <p className="mt-3 font-mono text-2xl text-foreground">{totalAutomated}</p>
             <Mono className="mt-1 block text-faint">continuously verified</Mono>
           </div>
 
@@ -384,8 +401,8 @@ function ProjectsPage() {
               </span>
               <p className="min-w-0 truncate text-xs text-muted-foreground">Open Findings</p>
             </div>
-            <p className="mt-3 font-mono text-2xl text-warn">2</p>
-            <Mono className="mt-1 block text-faint">in PIT Armour</Mono>
+            <p className="mt-3 font-mono text-2xl text-warn">{totalFindings}</p>
+            <Mono className="mt-1 block text-faint">needing attention</Mono>
           </div>
         </div>
 
@@ -582,7 +599,7 @@ function ProjectsPage() {
             projectName={reportTargetProject.name}
             projectClient={reportTargetProject.client}
             compliancePct={reportTargetProject.compliancePct}
-            checkpoints={checkpoints}
+            checkpoints={checkpoints.filter((c) => c.projectId === reportTargetProject.id)}
           />
         )}
 
@@ -651,8 +668,8 @@ function ProjectsPage() {
 
       <Rollup
         compliance={selectedProjectMeta.compliancePct}
-        automated={automatedCount}
-        manual={manualCount}
+        automated={selectedProjectMeta.automatedCount}
+        manual={selectedProjectMeta.manualCount}
         trendData={projectComplianceTrends[(activeProjectId || "project-a") as ProjectId]}
       />
 
@@ -678,7 +695,7 @@ function ProjectsPage() {
           </p>
           <ModuleGrid
             modules={visibleModules}
-            checkpoints={checkpoints}
+            checkpoints={projectCheckpoints}
             onOpen={(key) => {
               setOpenModule(key);
               setSearch("");
@@ -815,7 +832,7 @@ function ProjectsPage() {
           projectName={reportTargetProject.name}
           projectClient={reportTargetProject.client}
           compliancePct={reportTargetProject.compliancePct}
-          checkpoints={checkpoints}
+          checkpoints={checkpoints.filter((c) => c.projectId === reportTargetProject.id)}
         />
       )}
     </div>

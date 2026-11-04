@@ -16,11 +16,28 @@ import {
   type Cp10GateStatus,
   type Cp10Result,
   type Cp38Result,
+  type Cp6Result,
+  type Cp20Gates,
+  type Cp20Result,
+  type Cp40GateStatus,
+  type Cp40Result,
   type CrGateStatus,
   type CrComplianceResult,
 } from "./api-client";
 
 const CP10_GATE_ORDER: (keyof Cp10GateStatus)[] = ["llm", "mail", "jira"];
+const CP20_INITIAL_GATES: Cp20Gates = {
+  protection: "pending",
+  commits: "pending",
+  history: "pending",
+  review: "pending",
+};
+const CP40_INITIAL_GATES: Cp40GateStatus = {
+  ticket: "pending",
+  approver: "pending",
+  attachment: "pending",
+  content: "pending",
+};
 
 type AuditContextValue = {
   checkpoints: Checkpoint[];
@@ -52,6 +69,21 @@ type AuditContextValue = {
   crResult: CrComplianceResult | null;
   setCrVerification: (result: CrComplianceResult | null, gates: CrGateStatus) => void;
   undoCrVerification: (ledgerId: string, actor?: string) => void;
+  // Live CP6 result (approved CR in Jira) — shared between the copilot and the cp-6 ledger card.
+  cp6Result: Cp6Result | null;
+  setCp6Result: (result: Cp6Result | null) => void;
+  undoCp6Verification: (ledgerId: string, actor?: string) => void;
+  // Live CP20 result (PR mandatory, read from GitHub) — shared with the cp-20 ledger card.
+  cp20Gates: Cp20Gates;
+  cp20Result: Cp20Result | null;
+  setCp20Verification: (result: Cp20Result | null, gates: Cp20Gates) => void;
+  undoCp20Verification: (ledgerId: string, actor?: string) => void;
+  // Live CP40 result (production approval: Jira ticket + attached email) — shared
+  // between the copilot / Simulate and the cp-40 ledger card.
+  cp40Gates: Cp40GateStatus;
+  cp40Result: Cp40Result | null;
+  setCp40Verification: (result: Cp40Result | null, gates: Cp40GateStatus) => void;
+  undoCp40Verification: (ledgerId: string, actor?: string) => void;
   // Latest CP38 (UAT sign-off) result per ledger checkpoint id — set by the
   // copilot, read by that checkpoint's ManualCard to show the email evidence.
   cp38Results: Record<string, Cp38Result>;
@@ -70,6 +102,11 @@ export function AuditProvider({ children }: { children: ReactNode }) {
   const [cp10Result, setCp10Result] = useState<Cp10Result | null>(null);
   const [crGates, setCrGates] = useState<CrGateStatus>({ jira: "pending", branch: "pending", pr: "pending" });
   const [crResult, setCrResult] = useState<CrComplianceResult | null>(null);
+  const [cp6Result, setCp6Result] = useState<Cp6Result | null>(null);
+  const [cp20Gates, setCp20Gates] = useState<Cp20Gates>(CP20_INITIAL_GATES);
+  const [cp20Result, setCp20Result] = useState<Cp20Result | null>(null);
+  const [cp40Gates, setCp40Gates] = useState<Cp40GateStatus>(CP40_INITIAL_GATES);
+  const [cp40Result, setCp40Result] = useState<Cp40Result | null>(null);
   const [cp38Results, setCp38Results] = useState<Record<string, Cp38Result>>({});
   useEffect(() => {
     setNow(new Date());
@@ -161,7 +198,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
             if (cp.id !== id || cp.kind !== "manual") return cp;
             // An "attach documentation" step can't be completed without uploaded evidence.
             const step = cp.steps[index];
-            if (step && stepRequiresEvidence(step) && !step.evidence) return cp;
+            if (step && stepRequiresEvidence(cp.id, step) && !step.evidence) return cp;
             const steps = cp.steps.map((s, i) => {
               if (i === index)
                 return {
@@ -189,7 +226,7 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         );
         const cp = checkpoints.find((c) => c.id === id);
         const step = cp?.kind === "manual" ? cp.steps[index] : undefined;
-        if (step && stepRequiresEvidence(step) && !step.evidence) return;
+        if (step && stepRequiresEvidence(id, step) && !step.evidence) return;
         pushFeed("manual-workflow", `${cp?.ref} step ${index + 1} marked done by ${actor}.`);
       },
       undoStep: (id, index) => {
@@ -355,11 +392,39 @@ export function AuditProvider({ children }: { children: ReactNode }) {
         setCrResult(null);
         setCrGates({ jira: "pending", branch: "pending", pr: "pending" });
       },
+      cp6Result,
+      setCp6Result,
+      undoCp6Verification: (ledgerId, actor = "CP6 Copilot (undo)") => {
+        undoResolveCheckpoint(ledgerId, actor);
+        setCp6Result(null);
+      },
+      cp20Gates,
+      cp20Result,
+      setCp20Verification: (result, gates) => {
+        setCp20Result(result);
+        setCp20Gates(gates);
+      },
+      undoCp20Verification: (ledgerId, actor = "CP20 Copilot (undo)") => {
+        undoResolveCheckpoint(ledgerId, actor);
+        setCp20Result(null);
+        setCp20Gates(CP20_INITIAL_GATES);
+      },
+      cp40Gates,
+      cp40Result,
+      setCp40Verification: (result, gates) => {
+        setCp40Result(result);
+        setCp40Gates(gates);
+      },
+      undoCp40Verification: (ledgerId, actor = "CP40 Copilot (undo)") => {
+        undoResolveCheckpoint(ledgerId, actor);
+        setCp40Result(null);
+        setCp40Gates(CP40_INITIAL_GATES);
+      },
       cp38Results,
       setCp38Result: (ledgerId, result) => setCp38Results((r) => ({ ...r, [ledgerId]: result })),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [checkpoints, connectors, feed, clock, dateLabel, countdown, cp10Gates, cp10Result, crGates, crResult, cp38Results],
+    [checkpoints, connectors, feed, clock, dateLabel, countdown, cp10Gates, cp10Result, crGates, crResult, cp6Result, cp20Gates, cp20Result, cp40Gates, cp40Result, cp38Results],
   );
 
   return <AuditContext.Provider value={value}>{children}</AuditContext.Provider>;

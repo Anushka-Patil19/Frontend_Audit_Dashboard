@@ -461,6 +461,117 @@ h1 {{ margin: 0 0 20px; color: #087a5b; font-size: 22px; }}
         return None
 
 
+def _jira_session_path() -> Path:
+    path = Path(settings.jira_session_file)
+    return path if path.is_absolute() else Path.cwd() / path
+
+
+# Same pattern as the Outlook capture: one capture at a time, since each one
+# writes the refreshed login back to the same session file.
+_jira_session_lock = threading.Lock()
+
+
+def _locked_jira_capture(url: str, file_name: str, session: Path) -> str | None:
+    with _jira_session_lock:
+        return _run_in_own_loop(_playwright_jira_capture(url, file_name, session))
+
+
+async def _playwright_jira_capture(url: str, file_name: str, session: Path) -> str | None:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            context = await browser.new_context(storage_state=str(session), viewport={"width": 1280, "height": 800})
+            page = await context.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+            try:
+                await page.wait_for_selector('h1, [data-testid*="summary.heading"]', timeout=30_000)
+            except Exception:
+                pass
+            if "id.atlassian.com" in page.url or "/login" in page.url:
+                print("Jira screenshot: saved login has expired — run `python -m scripts.jira_login` again.")
+                return None
+            await page.wait_for_timeout(3_000)  # let the status lozenge, fonts and panels settle
+            buffer = await page.screenshot()
+            tmp = session.with_suffix(session.suffix + ".tmp")
+            await context.storage_state(path=str(tmp))
+            os.replace(tmp, session)
+
+            evidence_dir = _evidence_dir()
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            (evidence_dir / file_name).write_bytes(buffer)
+            return file_name
+        finally:
+            await browser.close()
+
+
+# CP6 evidence. With a saved Jira login (scripts/jira_login.py) this is a real
+# screenshot of the issue page in Jira; without one (or if it expired) it falls
+# back to a Jira-style card rendered from the live REST fields. Both are keyed on
+# the issue's `updated` time, so an unchanged ticket reuses its existing capture.
+async def capture_jira_status_screenshot(
+    *,
+    issue_key: str,
+    summary: str,
+    status: str,
+    reporter: str | None,
+    updated: str,
+    url: str,
+    checkpoint: str = "cp6",
+) -> str | None:
+    safe_key = re.sub(r"[^A-Za-z0-9_-]", "_", issue_key)
+    stamp = re.sub(r"[^0-9]", "", updated)[:14]
+
+    real_file_name = f"{checkpoint}-{safe_key}-{stamp}-jira.png"
+    if (_evidence_dir() / real_file_name).exists():
+        return real_file_name
+    session = _jira_session_path()
+    if session.exists():
+        try:
+            captured_real = await asyncio.to_thread(_locked_jira_capture, url, real_file_name, session)
+            if captured_real:
+                return captured_real
+        except Exception:
+            logger.exception("%s real Jira screenshot failed for %s; falling back to rendered card", checkpoint, issue_key)
+
+    file_name = f"{checkpoint}-{safe_key}-{stamp}.png"
+    if (_evidence_dir() / file_name).exists():
+        return file_name
+    captured = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %I:%M:%S %p IST")
+    project_key = issue_key.split("-")[0]
+    rows = "".join(
+        f'<div class="row"><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>'
+        for label, value in (
+            ("Reporter", reporter or "—"),
+            ("Updated", _format_ist(updated)),
+            ("Link", url),
+        )
+    )
+    page_html = f"""<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body {{ margin: 0; padding: 16px; background: #fff; font-family: -apple-system, "Segoe UI", Arial, sans-serif; color: #172b4d; }}
+.issue {{ width: 760px; border: 1px solid #dfe1e6; border-radius: 10px; padding: 22px 26px; box-shadow: 0 4px 12px rgba(0,0,0,.06); }}
+.crumbs {{ font-size: 13px; color: #44546f; }}
+.crumbs b {{ color: #0c66e4; font-weight: 500; }}
+h1 {{ margin: 12px 0 16px; font-size: 22px; line-height: 1.3; }}
+.status {{ display: inline-block; padding: 5px 12px; border-radius: 4px; background: #baf3db; color: #164b35;
+  font-weight: 600; font-size: 14px; border: 1px solid #7ee2b8; }}
+.row {{ display: grid; grid-template-columns: 110px 1fr; gap: 12px; margin: 10px 0; font-size: 14px; }}
+.row span {{ color: #626f86; }} .row strong {{ font-weight: 500; word-break: break-all; }}
+.foot {{ margin-top: 16px; padding-top: 10px; border-top: 1px solid #ebecf0; font-size: 11px; color: #8590a2; }}
+</style></head><body><main class="issue">
+<div class="crumbs">Jira · {html.escape(project_key)} / <b>{html.escape(issue_key)}</b></div>
+<h1>{html.escape(summary)}</h1>
+<div class="status">{html.escape(status)}</div>
+<div style="margin-top:14px">{rows}</div>
+<div class="foot">Read from the Jira REST API · captured {html.escape(captured)}</div>
+</main></body></html>"""
+    try:
+        return await _render_and_save(page_html, file_name, selector=".issue")
+    except Exception:
+        logger.exception("%s Jira status screenshot capture failed for %s", checkpoint, issue_key)
+        return None
+
+
 async def read_evidence_screenshot(file_name: str) -> bytes | None:
     if not _SAFE_FILENAME.match(file_name):
         return None

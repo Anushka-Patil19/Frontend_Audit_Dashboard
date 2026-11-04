@@ -82,17 +82,19 @@ searches the mailbox if the Jira ticket isn't in the right state yet.
 Same shape, minus the Jira gate (CP38 has no ticket-state precondition):
 
 1. **Ask the copilot.** *"What's the status of PIT Armour's UAT sign-off?"*
-   resolves to the CP38 project config (fixed authorized signer name/email,
-   fixed subject-line convention).
+   resolves to the CP38 project config (fixed authorized signer name/email).
+   There is no fixed subject line.
 
-2. **Mail gate.** Search the shared mailbox for a subject match (`"PIT
-   Armour UAT Sign-off"`). No match → `no_email`. A match from anyone other
-   than the configured authorized signer → `wrong_sender` (deterministic
-   string comparison, LLM never consulted).
+2. **Mail gate.** Search the shared mailbox for emails with a sign-off
+   phrase ("signed off", "sign-off", "sign off", "signoff") in the subject
+   **or** the body. None → `no_email`. The newest one from the configured
+   authorized signer is used. If only other people sent one → `wrong_sender`
+   (deterministic string comparison, LLM never consulted).
 
-3. **LLM gate.** Same shared classifier as CP10 (`approval-classifier.ts`
-   — one implementation, reused, not duplicated) checks the body for
-   explicit sign-off language.
+3. **LLM gate.** Same shared classifier as CP10 (`approval_classifier.py`),
+   but for CP38 it reads the subject line and body together. Explicit
+   sign-off in either one is enough. A subject that only requests a
+   sign-off is not.
 
 4. **Evidence capture.** Same as CP10: as soon as any matching email is
    found, it's screenshotted — `wrong_sender` and `ambiguous_language`

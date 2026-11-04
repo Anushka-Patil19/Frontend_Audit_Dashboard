@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ArrowLeft, Search } from "lucide-react";
 import {
-  checkpointModule,
+  moduleOf,
   modules,
   statusLabel,
   type Checkpoint,
@@ -11,7 +11,7 @@ import {
 import { useAudit } from "@/lib/audit-store";
 import { AutomatedCard } from "@/components/audit/AutomatedCard";
 import { ManualCard } from "@/components/audit/ManualCard";
-import { ModuleGrid } from "@/components/audit/ModuleGrid";
+import { ModuleGrid, overallCompliancePct } from "@/components/audit/ModuleGrid";
 import { Rollup } from "@/components/audit/panels";
 import { Mono, SectionHeading } from "@/components/audit/atoms";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -94,7 +94,7 @@ function ControlsPage() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const moduleCheckpoints = useMemo(
-    () => (openModule ? checkpoints.filter((c) => checkpointModule[c.id] === openModule) : []),
+    () => (openModule ? checkpoints.filter((c) => moduleOf(c.id) === openModule) : []),
     [checkpoints, openModule],
   );
 
@@ -141,7 +141,7 @@ function ControlsPage() {
       />
 
       <Rollup
-        compliance={78}
+        compliance={overallCompliancePct(checkpoints)}
         automated={automatedCount}
         manual={manualCount}
       />

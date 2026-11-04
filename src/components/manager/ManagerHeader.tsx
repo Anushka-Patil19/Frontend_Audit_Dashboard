@@ -1,5 +1,9 @@
-import { Bell, Gavel, Github, Mail, Siren } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { Bell, Gavel, Github, Loader2, Mail, RefreshCw, Siren } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { getGithubTrackingSummary, type TrackingSummary } from "@/lib/api-client";
+import type { ProjectId } from "@/lib/audit-data";
 import {
   COMPLIANCE_TARGET,
   GATES as GATE_NAMES,
@@ -52,18 +56,131 @@ const TOOLS = [
 export function ToolLinks() {
   return (
     <div className="flex items-center gap-1 rounded-lg border border-border bg-panel p-1 shadow-card">
-      {TOOLS.map((t) => (
-        <button
-          key={t.key}
-          type="button"
-          title={`${t.label} (link not configured yet)`}
-          aria-label={`Open ${t.label}`}
-          className="grid h-7 w-7 place-items-center rounded-md hover:bg-panel-2"
-        >
-          {t.icon}
-        </button>
-      ))}
+      {TOOLS.map((t) =>
+        t.key === "github" ? (
+          <GithubTrackingPopover key={t.key} icon={t.icon} />
+        ) : (
+          <button
+            key={t.key}
+            type="button"
+            title={`${t.label} (link not configured yet)`}
+            aria-label={`Open ${t.label}`}
+            className="grid h-7 w-7 place-items-center rounded-md hover:bg-panel-2"
+          >
+            {t.icon}
+          </button>
+        ),
+      )}
     </div>
+  );
+}
+
+/* ───────── GitHub icon: live escalated PRs / pushes / rule gaps per project ───────── */
+
+function GithubTrackingPopover({ icon }: { icon: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<TrackingSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = (refresh = false) => {
+    setError(null);
+    if (refresh) setRows(null);
+    getGithubTrackingSummary(refresh)
+      .then(setRows)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't load GitHub tracking."));
+  };
+
+  // Fetched when first opened (the backend caches it for the page too).
+  useEffect(() => {
+    if (open && !rows && !error) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const flaggedTotal = rows?.reduce((s, r) => s + r.flagged, 0) ?? 0;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="GitHub tracking"
+          aria-label="GitHub tracking"
+          className={`relative grid h-7 w-7 place-items-center rounded-md hover:bg-panel-2 ${open ? "bg-panel-2" : ""}`}
+        >
+          {icon}
+          {flaggedTotal > 0 && (
+            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-fail" aria-hidden="true" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" sideOffset={8} className="w-[min(92vw,400px)] p-0">
+        <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
+          <div>
+            <p className="font-serif text-base text-foreground">GitHub tracking</p>
+            <p className="text-xs text-muted-foreground">
+              Pick a project to see its pull requests, pushes, deploys and rules
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => load(true)}
+            title="Re-read GitHub now"
+            className="mt-0.5 rounded p-1 text-faint hover:bg-panel-2 hover:text-foreground"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${!rows && !error ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto py-1">
+          {error && <p className="px-4 py-3 text-xs text-fail">{error}</p>}
+          {!rows && !error && (
+            <p className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Reading GitHub and Jira…
+            </p>
+          )}
+          {rows?.map((r) => (
+            <Link
+              key={r.project_id}
+              to="/github"
+              search={{ project: r.project_id as ProjectId }}
+              onClick={() => setOpen(false)}
+              className="block border-b border-border px-4 py-2.5 last:border-0 hover:bg-panel-2/60"
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-sm text-foreground">{r.name}</span>
+                {!r.connected ? (
+                  <span className="rounded-full bg-panel-2 px-2 py-0.5 text-[10px] text-faint">no repo connected</span>
+                ) : r.flagged > 0 ? (
+                  <span className="rounded-full bg-fail/10 px-2 py-0.5 text-[10px] font-medium text-fail">
+                    {r.flagged} flagged
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-ok/10 px-2 py-0.5 text-[10px] font-medium text-ok">clean</span>
+                )}
+              </span>
+              {r.connected && (
+                <>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {r.kpis.open_prs} open PRs · {r.kpis.flagged_prs} flagged PRs · {r.kpis.bypassed_pushes} bypassed
+                    pushes · {r.kpis.rule_gaps} rule gaps
+                  </span>
+                  {r.top.length > 0 && (
+                    <ul className="mt-1 space-y-0.5">
+                      {r.top.map((t) => (
+                        <li key={t.text} className="flex items-center gap-1.5 text-[11px]">
+                          <Siren className={`h-3 w-3 shrink-0 ${t.level === "fail" ? "text-fail" : "text-warn"}`} />
+                          <span className="truncate text-foreground">{t.text}</span>
+                          <span className={`shrink-0 ${t.level === "fail" ? "text-fail" : "text-warn"}`}>· {t.label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </Link>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

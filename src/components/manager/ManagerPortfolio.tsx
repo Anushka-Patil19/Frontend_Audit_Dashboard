@@ -199,7 +199,7 @@ export function MyProjects({
                 const mp = MANAGER_PROJECTS[pid];
                 const v = views[pid];
                 const prev = v.scoreTrend[v.scoreTrend.length - 2];
-                const delta = prev === undefined ? 0 : v.score - prev;
+                const delta = prev === undefined ? 0 : Math.round((v.score - prev) * 10) / 10;
                 const failing = v.pitCheckpoints.filter((c) =>
                   c.kind === "automated"
                     ? c.status !== "compliant"

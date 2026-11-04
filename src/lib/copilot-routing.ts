@@ -9,6 +9,9 @@
 export const COPILOT_SUGGESTIONS = [
   "What's the status of PIT Armour's UAT sign-off?",
   "Check CP10 for PIT Armour.",
+  "Check CP6 for PIT Armour.",
+  "Check CP40 production approval for PIT Armour.",
+  "Check CP20 pull request rule for PIT Armour.",
   "Can you tell me if ticket CR-POC-4 is compliant?",
   "Which dependencies need to be upgraded?",
 ];
@@ -45,6 +48,40 @@ export function looksLikeCp10Question(question: string): boolean {
     q.includes("cab approval") ||
     q.includes("cab approver") ||
     CP10_JIRA_TICKETS.some((t) => q.includes(t.toLowerCase()))
+  );
+}
+
+// Known CP6 CR ticket(s) — routing only, same idea as CP10_JIRA_TICKETS. Checked
+// before the CR-compliance route, which would otherwise claim "POC-7 … compliant".
+const CP6_JIRA_TICKETS = ["POC-7"];
+
+export function looksLikeCp6Question(question: string): boolean {
+  const q = question.toLowerCase();
+  return /\bcp[-\s]?6\b/.test(q) || CP6_JIRA_TICKETS.some((t) => q.includes(t.toLowerCase()));
+}
+
+// CP20 (pull request mandatory). Checked before CR, whose "PR" questions mention tickets.
+export function looksLikeCp20Question(question: string): boolean {
+  const q = question.toLowerCase();
+  return (
+    /\bcp[-\s]?20\b/.test(q) ||
+    q.includes("pull request rule") ||
+    q.includes("pull request mandatory") ||
+    q.includes("direct push")
+  );
+}
+
+// CP40 (production deployment approval via Jira + attached email). Checked
+// before CR/CP10, which would otherwise claim "POC-8 … approval/compliant".
+const CP40_JIRA_TICKETS = ["POC-8"];
+
+export function looksLikeCp40Question(question: string): boolean {
+  const q = question.toLowerCase();
+  return (
+    /\bcp[-\s]?40\b/.test(q) ||
+    q.includes("production approval") ||
+    q.includes("production deployment approval") ||
+    CP40_JIRA_TICKETS.some((t) => q.includes(t.toLowerCase()))
   );
 }
 

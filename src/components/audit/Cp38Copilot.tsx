@@ -32,12 +32,21 @@ import {
   type Cp10Result,
   runCrComplianceVerification,
   type CrComplianceResult,
+  runCp6Verification,
+  type Cp6Result,
+  runCp40Verification,
+  type Cp40Result,
+  runCp20Verification,
+  type Cp20Result,
   checkRepoDependencies,
   formatDependencyReply,
 } from "@/lib/api-client";
 import {
   COPILOT_SUGGESTIONS,
   looksLikeCp10Question,
+  looksLikeCp6Question,
+  looksLikeCp20Question,
+  looksLikeCp40Question,
   looksLikeCrComplianceQuestion,
   looksLikeDependencyQuestion,
 } from "@/lib/copilot-routing";
@@ -50,6 +59,9 @@ type ChatMessage = {
   cp38Result?: Cp38Result | null;
   cp10Result?: Cp10Result | null;
   crResult?: CrComplianceResult | null;
+  cp6Result?: Cp6Result | null;
+  cp40Result?: Cp40Result | null;
+  cp20Result?: Cp20Result | null;
 };
 
 const SUGGESTIONS = COPILOT_SUGGESTIONS;
@@ -59,7 +71,7 @@ export function Cp38Copilot() {
   const runCp10 = runCp10Verification;
   const runCr = runCrComplianceVerification;
   const checkDependencies = checkRepoDependencies;
-  const { applyCp38, applyCp10, applyCr } = useLedgerSync();
+  const { applyCp38, applyCp10, applyCr, applyCp6, applyCp20, applyCp40 } = useLedgerSync();
   const [open, setOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"floating" | "sidebar">("floating");
   const [showSwitchMenu, setShowSwitchMenu] = useState(false);
@@ -104,6 +116,24 @@ export function Cp38Copilot() {
     applyCr(res);
   };
 
+  const askCp6 = async (question: string) => {
+    const res = await runCp6Verification({ data: { question } });
+    setMessages((m) => [...m, { role: "assistant", text: res.reply, cp6Result: res.result }]);
+    applyCp6(res);
+  };
+
+  const askCp20 = async (question: string) => {
+    const res = await runCp20Verification({ data: { question } });
+    setMessages((m) => [...m, { role: "assistant", text: res.reply, cp20Result: res.result }]);
+    applyCp20(res);
+  };
+
+  const askCp40 = async (question: string) => {
+    const res = await runCp40Verification({ data: { question } });
+    setMessages((m) => [...m, { role: "assistant", text: res.reply, cp40Result: res.result }]);
+    applyCp40(res);
+  };
+
   const askDependencies = async () => {
     const res = await checkDependencies();
     setMessages((m) => [...m, { role: "assistant", text: formatDependencyReply(res) }]);
@@ -117,6 +147,12 @@ export function Cp38Copilot() {
     try {
       if (looksLikeDependencyQuestion(question)) {
         await askDependencies();
+      } else if (looksLikeCp20Question(question)) {
+        await askCp20(question);
+      } else if (looksLikeCp40Question(question)) {
+        await askCp40(question);
+      } else if (looksLikeCp6Question(question)) {
+        await askCp6(question);
       } else if (looksLikeCrComplianceQuestion(question)) {
         await askCr(question);
       } else if (looksLikeCp10Question(question)) {
@@ -390,7 +426,14 @@ export function Cp38Copilot() {
                 >
                   <pre className="whitespace-pre-wrap font-sans">{m.text}</pre>
 
-                  <CopilotResultDetails cp38Result={m.cp38Result} cp10Result={m.cp10Result} crResult={m.crResult} />
+                  <CopilotResultDetails
+                    cp38Result={m.cp38Result}
+                    cp10Result={m.cp10Result}
+                    crResult={m.crResult}
+                    cp6Result={m.cp6Result}
+                    cp40Result={m.cp40Result}
+                    cp20Result={m.cp20Result}
+                  />
                 </div>
               </div>
             ))}

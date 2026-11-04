@@ -2,7 +2,14 @@ import { useState } from "react";
 import { Github, Mail, FolderClosed, SquareKanban, ImageIcon } from "lucide-react";
 import type { SourceKey, Status } from "@/lib/audit-data";
 import { statusLabel, statusTone } from "@/lib/audit-data";
-import { getCp10EvidenceScreenshot, getCp38EvidenceScreenshot, getCrEvidenceScreenshot } from "@/lib/api-client";
+import {
+  getCp10EvidenceScreenshot,
+  getCp38EvidenceScreenshot,
+  getCp6EvidenceScreenshot,
+  getCp20EvidenceScreenshot,
+  getCp40EvidenceScreenshot,
+  getCrEvidenceScreenshot,
+} from "@/lib/api-client";
 
 export const tone = {
   ok: { text: "text-ok", bg: "bg-ok", border: "border-l-ok" },
@@ -80,7 +87,7 @@ export function EvidenceScreenshot({
   alt = "Screenshot of the approved email",
 }: {
   fileName: string;
-  source: "cp10" | "cp38" | "cr";
+  source: "cp6" | "cp10" | "cp20" | "cp38" | "cp40" | "cr";
   label?: string;
   alt?: string;
 }) {
@@ -94,7 +101,13 @@ export function EvidenceScreenshot({
         ? getCp10EvidenceScreenshot
         : source === "cr"
           ? getCrEvidenceScreenshot
-          : getCp38EvidenceScreenshot;
+          : source === "cp6"
+            ? getCp6EvidenceScreenshot
+            : source === "cp40"
+              ? getCp40EvidenceScreenshot
+              : source === "cp20"
+                ? getCp20EvidenceScreenshot
+                : getCp38EvidenceScreenshot;
     const res = await getScreenshot({ data: { fileName } });
     if (!res) {
       setState("error");

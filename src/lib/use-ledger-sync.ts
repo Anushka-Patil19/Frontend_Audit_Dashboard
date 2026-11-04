@@ -3,6 +3,11 @@ import { useAudit } from "./audit-store";
 import type {
   Cp10VerifyResponse,
   Cp38VerifyResponse,
+  Cp6VerifyResponse,
+  Cp20OutcomeId,
+  Cp20VerifyResponse,
+  Cp40OutcomeId,
+  Cp40VerifyResponse,
   CrOutcomeId,
   CrVerifyResponse,
 } from "./api-client";
@@ -16,6 +21,26 @@ const CR_OUTCOME_TO_STATUS: Record<CrOutcomeId, AutoStatus> = {
   "CR-Pending": "needs-review",
 };
 
+// Pending (no approval / no file yet) and Manual check (a person must read the
+// file) both land on "needs-review"; the card shows which one it is.
+const CP40_OUTCOME_TO_STATUS: Record<Cp40OutcomeId, AutoStatus> = {
+  "CP40-C": "compliant",
+  "CP40-NC": "non-compliant",
+  "CP40-Pending": "needs-review",
+  "CP40-Manual": "needs-review",
+};
+
+// CP20 (PRD §7): both compliant results pass; an observation (author merged their
+// own PR) passes #20 but is a review gap flagged to #21, so it goes to review;
+// "Not evidenced" is never Compliant.
+const CP20_OUTCOME_TO_STATUS: Record<Cp20OutcomeId, AutoStatus> = {
+  "CP20-C": "compliant",
+  "CP20-CE": "compliant",
+  "CP20-OBS": "needs-review",
+  "CP20-NC": "non-compliant",
+  "CP20-NE": "needs-review",
+};
+
 // Writes a copilot verification back into the checkpoint ledger (evidence,
 // gate progress, step/status). Shared by the copilot chat and Simulate, so a
 // check run from either place shows up on the checkpoint cards the same way.
@@ -26,12 +51,15 @@ export function useLedgerSync() {
     resolveCheckpoint,
     setCp10Verification,
     setCrVerification,
+    setCp6Result,
+    setCp20Verification,
+    setCp40Verification,
     setCp38Result,
   } = useAudit();
 
   const applyCp38 = ({ result, config }: Cp38VerifyResponse) => {
-    // The received email is evidence either way — a Pending one shows why it
-    // wasn't accepted — so the ledger card gets it whenever there's a screenshot.
+    // The backend only captures a screenshot for an accepted (Compliant) sign-off,
+    // so the ledger card gets evidence only then — Pending results carry none.
     if (result?.evidence_screenshot && config?.ledgerId) setCp38Result(config.ledgerId, result);
 
     // Compliant per the copilot's real, LLM-gated verification — auto-complete
@@ -78,5 +106,46 @@ export function useLedgerSync() {
     }
   };
 
-  return { applyCp38, applyCp10, applyCr };
+  // Jira status alone decides CP6: Approved → compliant, anything else (To Do,
+  // In Progress, …) → non-compliant. Both outcomes are written to the ledger.
+  const applyCp6 = ({ reply, result, config }: Cp6VerifyResponse) => {
+    setCp6Result(result);
+    if (result && config?.ledgerId) {
+      resolveCheckpoint(
+        config.ledgerId,
+        result.outcome_id === "CP6-C" ? "compliant" : "non-compliant",
+        "Verified",
+        reply.split("\n").slice(1).join(" "),
+        "CP6 Copilot (Jira-verified)",
+      );
+    }
+  };
+
+  const applyCp40 = ({ reply, result, gates, config }: Cp40VerifyResponse) => {
+    setCp40Verification(result, gates);
+    if (result && config?.ledgerId) {
+      resolveCheckpoint(
+        config.ledgerId,
+        CP40_OUTCOME_TO_STATUS[result.outcome_id],
+        "Verified",
+        reply.split("\n").slice(1).join(" "),
+        "CP40 Copilot (Jira + attachment verified)",
+      );
+    }
+  };
+
+  const applyCp20 = ({ reply, result, gates, config }: Cp20VerifyResponse) => {
+    setCp20Verification(result, gates);
+    if (result && config?.ledgerId) {
+      resolveCheckpoint(
+        config.ledgerId,
+        CP20_OUTCOME_TO_STATUS[result.outcome_id],
+        "Verified",
+        reply.split("\n").slice(1).join(" "),
+        "CP20 Copilot (GitHub-verified)",
+      );
+    }
+  };
+
+  return { applyCp38, applyCp10, applyCr, applyCp6, applyCp20, applyCp40 };
 }

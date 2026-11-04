@@ -1,0 +1,29 @@
+{
+  "project-a": {
+    "name": "PIT Armour",
+    "jira_project_keys": ["POC"],
+    "repos": [
+      {
+        "owner": "Anushka34567",
+        "repo": "Github_integration",
+        "protected_branches": ["main"]
+      }
+    ],
+    "period_start": "2026-09-01T00:00:00Z",
+    "deploy_window": null
+  },
+  "project-b": {
+    "name": "SAATHI",
+    "jira_project_keys": [],
+    "repos": [],
+    "period_start": "2026-09-01T00:00:00Z",
+    "deploy_window": null
+  },
+  "project-c": {
+    "name": "MPS",
+    "jira_project_keys": [],
+    "repos": [],
+    "period_start": "2026-09-01T00:00:00Z",
+    "deploy_window": null
+  }
+}

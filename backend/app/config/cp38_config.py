@@ -11,6 +11,8 @@ cp38_configs: list[Cp38ProjectConfig] = [
         requiredRole="Business",
         authorizedName="Akhil",
         authorizedEmail="Akhil@neweltechnologies.com",
+        # Display label only — verification no longer matches on it. Any email with a
+        # sign-off phrase in its subject or body is checked (see cp38_verify.py).
         subjectMatch="PIT Armour UAT Sign-off",
         ledgerId="cp-38",
     ),

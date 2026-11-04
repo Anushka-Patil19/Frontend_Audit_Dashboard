@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import type { ManualCheckpoint, ManualStep } from "@/lib/audit-data";
-import { statusLabel, stepRequiresEvidence } from "@/lib/audit-data";
+import { isMailVerifiedCheckpoint, statusLabel, stepRequiresEvidence } from "@/lib/audit-data";
 import { useAudit } from "@/lib/audit-store";
 import { EvidenceScreenshot, HistoryStrip, Mono, openImageInNewTab } from "./atoms";
 
@@ -158,6 +158,7 @@ export function ManualCard({ cp, onStepDone, onStepUndo, onComment }: Props) {
   const [draft, setDraft] = useState("");
   const { cp38Results, setStepEvidence } = useAudit();
   const cp38Result = cp38Results[cp.id];
+  const mailVerified = isMailVerifiedCheckpoint(cp.id);
   const done = cp.steps.filter((s) => s.state === "done").length;
   const activeIndex = cp.steps.findIndex((s) => s.state === "pending");
   const lastDoneIndex = (activeIndex === -1 ? cp.steps.length : activeIndex) - 1;
@@ -228,7 +229,7 @@ export function ManualCard({ cp, onStepDone, onStepUndo, onComment }: Props) {
           <ol className="space-y-0">
             {cp.steps.map((s, i) => {
               const locked = s.state === "locked";
-              const needsEvidence = stepRequiresEvidence(s);
+              const needsEvidence = stepRequiresEvidence(cp.id, s);
               const missingEvidence = needsEvidence && !s.evidence;
               return (
                 <li key={i} className="flex gap-3 py-2.5">
@@ -293,7 +294,13 @@ export function ManualCard({ cp, onStepDone, onStepUndo, onComment }: Props) {
                         onRemove={() => setStepEvidence(cp.id, i, null)}
                       />
                     )}
-                    {s.state === "pending" && i === activeIndex && (
+                    {s.state === "pending" && i === activeIndex && mailVerified && (
+                      <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-faint">
+                        <Mail className="h-3 w-3" /> Completes automatically when the sign-off email
+                        is verified.
+                      </p>
+                    )}
+                    {s.state === "pending" && i === activeIndex && !mailVerified && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => onStepDone(cp.id, i)}

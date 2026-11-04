@@ -1,19 +1,20 @@
 import { ChevronRight, FolderClosed, Cpu } from "lucide-react";
 import type { Checkpoint, Module } from "@/lib/audit-data";
-import { checkpointModule } from "@/lib/audit-data";
+import { isCheckpointDone, moduleOf, overallCompliancePct } from "@/lib/audit-data";
 import { Mono } from "./atoms";
 
+export { isCheckpointDone, overallCompliancePct };
+
 export function moduleStats(checkpoints: Checkpoint[], key: string) {
-  const items = checkpoints.filter((c) => checkpointModule[c.id] === key);
-  const score = items.reduce((sum, c) => {
-    if (c.kind === "automated") return sum + (c.status === "compliant" ? 1 : 0);
-    return sum + c.steps.filter((s) => s.state === "done").length / c.steps.length;
-  }, 0);
+  const items = checkpoints.filter((c) => moduleOf(c.id) === key);
+  const done = items.filter(isCheckpointDone).length;
   return {
     items,
     automated: items.filter((c) => c.kind === "automated"),
     manual: items.filter((c) => c.kind === "manual"),
-    pct: items.length ? Math.round((score / items.length) * 100) : 0,
+    done,
+    // Same equal-weight rule as the overall %, so module colours/thresholds agree with the pointers.
+    pct: items.length ? Math.round((done / items.length) * 100) : 0,
     attention: items.filter((c) => c.status === "non-compliant" || c.status === "needs-review")
       .length,
   };
@@ -32,7 +33,8 @@ export function ModuleGrid({
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {modules.map((m) => {
-        const { items, automated, manual, pct, attention } = moduleStats(checkpoints, m.key);
+        const { items, automated, manual, done, attention } = moduleStats(checkpoints, m.key);
+        const donePct = items.length ? (done / items.length) * 100 : 0;
 
         return (
           <button
@@ -61,11 +63,13 @@ export function ModuleGrid({
             <p className="mt-2 text-sm text-muted-foreground">{m.description}</p>
 
             <div className="mt-4 flex items-baseline gap-3">
-              <span className="font-mono text-2xl text-foreground">{pct}%</span>
-              <Mono className="text-faint">{items.length} checkpoints verified</Mono>
+              <span className="font-mono text-2xl text-foreground">
+                {done}/{items.length}
+              </span>
+              <Mono className="text-faint">checkpoints completed</Mono>
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-accent">
-              <span className="block h-full rounded-full bg-ok" style={{ width: `${pct}%` }} />
+              <span className="block h-full rounded-full bg-ok" style={{ width: `${donePct}%` }} />
             </div>
 
 

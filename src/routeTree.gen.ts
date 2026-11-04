@@ -15,6 +15,7 @@ import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ControlsRouteImport } from './routes/controls'
 import { Route as EscalationsRouteImport } from './routes/escalations'
 import { Route as FindingsRouteImport } from './routes/findings'
+import { Route as GithubRouteImport } from './routes/github'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ConnectorsSourceRouteImport } from './routes/connectors.$source'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -49,6 +50,11 @@ const FindingsRoute = FindingsRouteImport.update({
   path: '/findings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GithubRoute = GithubRouteImport.update({
+  id: '/github',
+  path: '/github',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsRoute = ProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/controls': typeof ControlsRoute
   '/escalations': typeof EscalationsRoute
   '/findings': typeof FindingsRoute
+  '/github': typeof GithubRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/controls': typeof ControlsRoute
   '/escalations': typeof EscalationsRoute
   '/findings': typeof FindingsRoute
+  '/github': typeof GithubRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/controls': typeof ControlsRoute
   '/escalations': typeof EscalationsRoute
   '/findings': typeof FindingsRoute
+  '/github': typeof GithubRoute
   '/projects': typeof ProjectsRoute
   '/connectors/$source': typeof ConnectorsSourceRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/controls'
     | '/escalations'
     | '/findings'
+    | '/github'
     | '/projects'
     | '/connectors/$source'
     | '/invite/$token'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/controls'
     | '/escalations'
     | '/findings'
+    | '/github'
     | '/projects'
     | '/connectors/$source'
     | '/invite/$token'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/controls'
     | '/escalations'
     | '/findings'
+    | '/github'
     | '/projects'
     | '/connectors/$source'
     | '/invite/$token'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   ControlsRoute: typeof ControlsRoute
   EscalationsRoute: typeof EscalationsRoute
   FindingsRoute: typeof FindingsRoute
+  GithubRoute: typeof GithubRoute
   ProjectsRoute: typeof ProjectsRoute
   InviteTokenRoute: typeof InviteTokenRoute
 }
@@ -190,6 +203,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FindingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/github': {
+      id: '/github'
+      path: '/github'
+      fullPath: '/github'
+      preLoaderRoute: typeof GithubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects': {
       id: '/projects'
       path: '/projects'
@@ -233,6 +253,7 @@ const rootRouteChildren: RootRouteChildren = {
   ControlsRoute: ControlsRoute,
   EscalationsRoute: EscalationsRoute,
   FindingsRoute: FindingsRoute,
+  GithubRoute: GithubRoute,
   ProjectsRoute: ProjectsRoute,
   InviteTokenRoute: InviteTokenRoute,
 }
