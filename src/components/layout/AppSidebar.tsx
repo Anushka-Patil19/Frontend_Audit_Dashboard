@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import {
+  CalendarDays,
   LayoutDashboard,
   FolderKanban,
   AlertTriangle,
@@ -17,6 +18,7 @@ const nav = [
   { to: "/projects", label: "Projects", icon: FolderKanban, group: "Compliance" },
   { to: "/findings", label: "Findings", icon: AlertTriangle, group: "Compliance" },
   { to: "/escalations", label: "Escalations", icon: Timer, group: "Compliance" },
+  { to: "/audit-calendar", label: "Audit calendar", icon: CalendarDays, group: "Compliance" },
   { to: "/github", label: "GitHub", icon: Github, group: "Compliance" },
   { to: "/connectors", label: "Connectors", icon: Plug, group: "Compliance" },
   { to: "/activity", label: "Activity", icon: ScrollText, group: "Compliance" },

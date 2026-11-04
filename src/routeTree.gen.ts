@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ActivityRouteImport } from './routes/activity'
+import { Route as AuditCalendarRouteImport } from './routes/audit-calendar'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as ControlsRouteImport } from './routes/controls'
 import { Route as EscalationsRouteImport } from './routes/escalations'
@@ -28,6 +29,11 @@ const IndexRoute = IndexRouteImport.update({
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditCalendarRoute = AuditCalendarRouteImport.update({
+  id: '/audit-calendar',
+  path: '/audit-calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectorsRoute = ConnectorsRouteImport.update({
@@ -74,6 +80,7 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/audit-calendar': typeof AuditCalendarRoute
   '/connectors': typeof ConnectorsRouteWithChildren
   '/controls': typeof ControlsRoute
   '/escalations': typeof EscalationsRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/audit-calendar': typeof AuditCalendarRoute
   '/connectors': typeof ConnectorsRouteWithChildren
   '/controls': typeof ControlsRoute
   '/escalations': typeof EscalationsRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/audit-calendar': typeof AuditCalendarRoute
   '/connectors': typeof ConnectorsRouteWithChildren
   '/controls': typeof ControlsRoute
   '/escalations': typeof EscalationsRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/activity'
+    | '/audit-calendar'
     | '/connectors'
     | '/controls'
     | '/escalations'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/activity'
+    | '/audit-calendar'
     | '/connectors'
     | '/controls'
     | '/escalations'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/activity'
+    | '/audit-calendar'
     | '/connectors'
     | '/controls'
     | '/escalations'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
+  AuditCalendarRoute: typeof AuditCalendarRoute
   ConnectorsRoute: typeof ConnectorsRouteWithChildren
   ControlsRoute: typeof ControlsRoute
   EscalationsRoute: typeof EscalationsRoute
@@ -173,6 +186,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity'
       preLoaderRoute: typeof ActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit-calendar': {
+      id: '/audit-calendar'
+      path: '/audit-calendar'
+      fullPath: '/audit-calendar'
+      preLoaderRoute: typeof AuditCalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connectors': {
@@ -249,6 +269,7 @@ const ConnectorsRouteWithChildren = ConnectorsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
+  AuditCalendarRoute: AuditCalendarRoute,
   ConnectorsRoute: ConnectorsRouteWithChildren,
   ControlsRoute: ControlsRoute,
   EscalationsRoute: EscalationsRoute,
