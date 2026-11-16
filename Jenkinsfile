@@ -1,3 +1,13 @@
+// Frontend Audit Dashboard — tag-based release pipeline.
+// Follows Jenkins_Git_Tag_Versioning_Procedure.pdf: every deployment is built
+// from a Git release tag (vMAJOR.MINOR.PATCH), the tag and commit SHA are
+// verified and logged, and release-info.json is archived with the build so the
+// Audit Dashboard (CP32) can cross-verify Jenkins, the log and GitHub.
+//
+// Release flow:
+//   git tag -a v1.0.0 -m "Release v1.0.0"
+//   git push origin v1.0.0
+//   Jenkins → Build with Parameters → GIT_TAG = v1.0.0
 
 pipeline {
     agent { label 'built-in' }
@@ -8,7 +18,17 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
+    parameters {
+        string(
+            name: 'GIT_TAG',
+            defaultValue: 'v1.0.0',
+            description: 'Git release tag to build and deploy (e.g. v1.0.0)'
+        )
+    }
+
     environment {
+        REPO_URL = 'https://github.com/Anushka-Patil19/Frontend_Audit_Dashboard.git'
+
         FRONTEND_NAME = 'frontend-audit-dashboard'
         BACKEND_NAME  = 'frontend-audit-backend'
 
@@ -20,10 +40,55 @@ pipeline {
 
     stages {
 
+        stage('Validate Tag Parameter') {
+            steps {
+                script {
+                    if (!(params.GIT_TAG ==~ /^v\d+\.\d+\.\d+$/)) {
+                        error("GIT_TAG '${params.GIT_TAG}' is not a semantic version tag (expected vMAJOR.MINOR.PATCH, e.g. v1.0.0).")
+                    }
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Anushka-Patil19/Frontend_Audit_Dashboard.git'
+                // Check out the release tag itself — never a branch.
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "refs/tags/${params.GIT_TAG}"]],
+                    userRemoteConfigs: [[
+                        url: "${REPO_URL}",
+                        refspec: '+refs/tags/*:refs/tags/*'
+                    ]]
+                ])
+            }
+        }
+
+        stage('Capture Release Information') {
+            steps {
+                script {
+                    env.GIT_COMMIT_SHA = sh(
+                        script: 'git rev-parse HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.RELEASE_TAG = sh(
+                        script: 'git describe --tags --exact-match HEAD 2>/dev/null || echo NOT_TAGGED',
+                        returnStdout: true
+                    ).trim()
+
+                    if (env.RELEASE_TAG == 'NOT_TAGGED') {
+                        error('Build aborted: source is not at a Git-tagged commit.')
+                    }
+
+                    if (env.RELEASE_TAG != params.GIT_TAG) {
+                        error("Selected tag ${params.GIT_TAG} does not match checked-out source tag ${env.RELEASE_TAG}.")
+                    }
+                }
+
+                // CP32 reads these two lines from the console log.
+                echo "Git Tag: ${env.RELEASE_TAG}"
+                echo "Commit SHA: ${env.GIT_COMMIT_SHA}"
             }
         }
 
@@ -133,6 +198,22 @@ pipeline {
             }
         }
 
+        stage('Generate Release Metadata') {
+            steps {
+                // Links the tagged source to this Jenkins build. Generated only
+                // after the tag/SHA verification above has passed.
+                writeFile file: 'release-info.json',
+                    text: """{
+  "git_tag": "${env.RELEASE_TAG}",
+  "commit_sha": "${env.GIT_COMMIT_SHA}",
+  "build_number": "${env.BUILD_NUMBER}",
+  "job_name": "${env.JOB_NAME}",
+  "build_url": "${env.BUILD_URL}"
+}"""
+                archiveArtifacts artifacts: 'release-info.json', fingerprint: true
+            }
+        }
+
         stage('Deploy Frontend') {
             steps {
                 sh '''
@@ -237,12 +318,13 @@ pipeline {
 
     post {
         success {
-            echo '''
+            echo """
                 Deployment pipeline completed successfully.
 
+                Release:  ${env.RELEASE_TAG} (${env.GIT_COMMIT_SHA})
                 Frontend: http://192.168.100.204:8082
                 Backend:  http://192.168.100.204:8081/docs
-            '''
+            """
         }
 
         failure {
